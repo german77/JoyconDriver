@@ -153,7 +153,7 @@ local function getBytes(buffer)
 
     if #buttons_array ~= 0 then
         buttons_text = " (" .. table.concat(buttons_array, ",")
-        if buffer:len() > 16 then buttons_text = buttons_text .. ", ..." end
+        if buffer:len() > 16 then buttons_text = buttons_text .. ",..." end
         buttons_text = buttons_text .. ")"
     end
     return buttons_text
@@ -235,7 +235,7 @@ local function parse_spi_reply(buffer, pinfo, tree)
     tree:add_le(spiAddress,  address_value):append_text(address_text)
     tree:add_le(spiData,  data_value)
 
-    pinfo.cols.info = "Reply SPI: address 0x" .. hex(address_value:le_uint()) .. " size 0x" .. length_value .. " ->" .. getBytes(data_value)
+    pinfo.cols.info = "Reply   SPI: address 0x" .. hex(address_value:le_uint()) .. " size 0x" .. length_value .. " ->" .. getBytes(data_value)
     return " (SPI)"
 end
 
@@ -251,7 +251,7 @@ local function parse_imu_reply(buffer, pinfo, tree)
     local result_value = buffer(5,1)
     local result_text = parse_result(result_value:le_uint())
 
-    pinfo.cols.info = "Reply IMU:" .. result_text
+    pinfo.cols.info = "Reply   IMU:" .. result_text
     return " (IMU)"
 end
 
@@ -263,7 +263,7 @@ local function parse_data_reply(buffer, pinfo, tree)
     local data_value = buffer(8,buffer:len()-8)
     local data_length = data_value:len()
 
-    pinfo.cols.info = "Reply data(" .. command_value .. "):".. result_text .. " size ".. hex(data_length) .. " ->" .. getBytes(data_value)
+    pinfo.cols.info = "Reply   data(" .. command_value .. "):".. result_text .. " size 0x".. hex(data_length) .. " ->" .. getBytes(data_value)
     return " (IMU)"
 end
 
@@ -281,7 +281,7 @@ local function parse_reply(buffer, pinfo, tree)
     elseif report_type_value == 0x09 then report_type_text = parse_player_lights_reply(buffer, pinfo, tree)
     elseif report_type_value == 0x0c then report_type_text = parse_imu_reply(buffer, pinfo, tree)
     elseif report_type_value == 0x15 then report_type_text = parse_data_reply(buffer, pinfo, tree)
-    else pinfo.cols.info = "Reply(0x" .. hex(report_type_value) .. ", 0x"..command_value..") ->"..result_text .. getBytes(buffer(8,buffer:len()-8)) end
+    else pinfo.cols.info = "Reply  (0x" .. hex(report_type_value) .. ", 0x"..command_value..") ->"..result_text .. getBytes(buffer(8,buffer:len()-8)) end
 
     tree:add_le(reportType,   buffer(0,1)):append_text(report_type_text)
 
