@@ -135,11 +135,11 @@ local function hex(value)
 end
 
 local function getBytes(buffer)
-    length = buffer:len()
+    length = buffer:len() -1
     local buttons_array = {}
     local buttons_text = " (none)"
 
-    if length > 10 then length=10 end
+    if length > 16 then length=16 end
     for i=0,length do 
         table.insert(buttons_array, hex(buffer:bytes():get_index(i)))
     end
@@ -159,7 +159,7 @@ local function parse_spi_command(buffer, pinfo, tree)
     tree:add_le(spiCommand, sub_command_value)
     tree:add_le(spiAddress,  address_value)
 
-    pinfo.cols.info = "Request SPI ".. sub_command_value .. ": address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
+    pinfo.cols.info = "Request SPI: address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
     return " (SPI)"
 end
 
@@ -168,7 +168,7 @@ local function parse_request(buffer, pinfo, tree)
     local report_type_text = "(Unknown)"
 
     if report_type_value == 0x02 then report_type_text = parse_spi_command(buffer, pinfo, tree)
-    else pinfo.cols.info = "Request("..command_value..") ->".. getBytes(buffer) end
+    else pinfo.cols.info = "Request("..report_type_value..") ->".. getBytes(buffer) end
 
     tree:add_le(reportType,   buffer(0,1)):append_text(report_type_text)
 
@@ -186,7 +186,7 @@ local function parse_spi_reply(buffer, pinfo, tree)
     tree:add_le(spiAddress,  address_value)
     tree:add_le(spiData,  data_value)
 
-    pinfo.cols.info = "Reply SPI ".. sub_command_value .. ": address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
+    pinfo.cols.info = "Reply SPI: address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
     return " (SPI)"
 end
 
