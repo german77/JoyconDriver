@@ -24,8 +24,12 @@ local spiAddress  = ProtoField.uint8("switch2.spiAddress", "SpiAddress", base.HE
 local spiData  = ProtoField.bytes("switch2.spiData", "SpiData", base.NONE)
 -- led
 local ledPattern  = ProtoField.uint8("switch2.ledPattern", "LedPattern", base.HEX)
+-- data
+local dataLength  = ProtoField.uint8("switch2.dataLength", "DataLength", base.DEC)
+local dataData  = ProtoField.bytes("switch2.dataData", "DataData", base.NONE)
 
-switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern}
+switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern,
+                           dataLength, dataData}
 
 local function parse_buttons(buttons_value)
     -- byte & (1 << n) > 0
@@ -128,7 +132,7 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
 
     local input_type_value = buffer(0,1):le_uint()
     subtree:add_le(inputType,   buffer(0,1))
-    
+
     if input_type_value == 0x09 then parse_input_report(buffer, pinfo, subtree) end
 
 end
@@ -138,7 +142,7 @@ local function hex(value)
 end
 
 local function getBytes(buffer)
-    length = buffer:len() -1
+    local length = buffer:len() -1
     local buttons_array = {}
     local buttons_text = " (none)"
 
@@ -148,7 +152,9 @@ local function getBytes(buffer)
     end
 
     if #buttons_array ~= 0 then
-        buttons_text = " (" .. table.concat(buttons_array, ",") .. ")"
+        buttons_text = " (" .. table.concat(buttons_array, ",")
+        if buffer:len() > 16 then buttons_text = buttons_text .. ", ..." end
+        buttons_text = buttons_text .. ")"
     end
     return buttons_text
 end
@@ -166,7 +172,7 @@ local function parse_spi_command(buffer, pinfo, tree)
     local length_value = buffer(8,1)
     local sub_command_value = buffer(9,1)
     local address_value = buffer(0xc,4)
-    
+
     tree:add_le(spiLength, length_value)
     tree:add_le(spiCommand, sub_command_value)
     tree:add_le(spiAddress,  address_value)
@@ -189,14 +195,30 @@ local function parse_imu_command(buffer, pinfo, tree)
     return " (IMU)"
 end
 
+local function parse_data_command(buffer, pinfo, tree)
+    local command_value = buffer(3,1)
+    local length_value = buffer(5,1)
+    local data_value = buffer(8,length_value:le_uint())
+
+    tree:add_le(dataLength, length_value)
+    tree:add_le(dataData, data_value)
+
+    pinfo.cols.info = "Request data("..command_value.."): size 0x"..length_value .. " ->"..getBytes(data_value)
+    return " (DATA)"
+end
+
 local function parse_request(buffer, pinfo, tree)
     local report_type_value = buffer(0,1):le_uint()
-    local report_type_text = "(Unknown)"
+    local report_type_text = " (Unknown)"
+    local command_value = buffer(3,1)
+
+    tree:add_le(command, command_value)
 
     if report_type_value == 0x02 then report_type_text = parse_spi_command(buffer, pinfo, tree)
     elseif report_type_value == 0x09 then report_type_text = parse_player_lights_command(buffer, pinfo, tree)
     elseif report_type_value == 0x0c then report_type_text = parse_imu_command(buffer, pinfo, tree)
-    else pinfo.cols.info = "Request(0x"..hex(report_type_value)..") ->".. getBytes(buffer) end
+    elseif report_type_value == 0x15 then report_type_text = parse_data_command(buffer, pinfo, tree)
+    else pinfo.cols.info = "Request(0x" .. hex(report_type_value) .. ", 0x"..command_value..") ->".. getBytes(buffer(5,buffer:len()-5)) end
 
     tree:add_le(reportType,   buffer(0,1)):append_text(report_type_text)
 
@@ -205,24 +227,21 @@ end
 
 local function parse_spi_reply(buffer, pinfo, tree)
     local length_value = buffer(8,1)
-    local result_value = buffer(5,1)
     local address_value = buffer(0xc,4)
+    local address_text = parse_spi_address(address_value:le_uint())
     local data_value = buffer(0x10,length_value:le_uint())
 
     tree:add_le(spiLength, length_value)
-    tree:add_le(result, result_value):append_text(parse_result(result_value:le_uint()))
-    tree:add_le(spiAddress,  address_value):append_text(parse_spi_address(result_value:le_uint()))
+    tree:add_le(spiAddress,  address_value):append_text(address_text)
     tree:add_le(spiData,  data_value)
 
-    pinfo.cols.info = "Reply SPI: address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
+    pinfo.cols.info = "Reply SPI: address 0x" .. hex(address_value:le_uint()) .. " size 0x" .. length_value .. " ->" .. getBytes(data_value)
     return " (SPI)"
 end
 
 local function parse_player_lights_reply(buffer, pinfo, tree)
     local result_value = buffer(5,1)
     local result_text = parse_result(result_value:le_uint())
-
-    tree:add_le(result, result_value):append_text(result_text)
 
     pinfo.cols.info = "Reply Player lights:" .. result_text
     return " (Player lights)"
@@ -232,20 +251,37 @@ local function parse_imu_reply(buffer, pinfo, tree)
     local result_value = buffer(5,1)
     local result_text = parse_result(result_value:le_uint())
 
-    tree:add_le(result, result_value):append_text(result_text)
-
     pinfo.cols.info = "Reply IMU:" .. result_text
+    return " (IMU)"
+end
+
+local function parse_data_reply(buffer, pinfo, tree)
+    local length = buffer:len()
+    local command_value = buffer(3,1)
+    local result_value = buffer(5,1)
+    local result_text = parse_result(result_value:le_uint())
+    local data_value = buffer(8,buffer:len()-8)
+    local data_length = data_value:len()
+
+    pinfo.cols.info = "Reply data(" .. command_value .. "):".. result_text .. " size ".. hex(data_length) .. " ->" .. getBytes(data_value)
     return " (IMU)"
 end
 
 local function parse_reply(buffer, pinfo, tree)
     local report_type_value = buffer(0,1):le_uint()
-    local report_type_text = "(Unknown)"
+    local report_type_text = " (Unknown)"
+    local command_value = buffer(3,1)
+    local result_value = buffer(5,1)
+    local result_text = parse_result(result_value:le_uint())
+
+    tree:add_le(command, command_value)
+    tree:add_le(result, result_value):append_text(result_text)
 
     if report_type_value == 0x02 then report_type_text = parse_spi_reply(buffer, pinfo, tree)
     elseif report_type_value == 0x09 then report_type_text = parse_player_lights_reply(buffer, pinfo, tree)
     elseif report_type_value == 0x0c then report_type_text = parse_imu_reply(buffer, pinfo, tree)
-    else pinfo.cols.info = "Reply(0x"..hex(report_type_value)..") ->".. getBytes(buffer) end
+    elseif report_type_value == 0x15 then report_type_text = parse_data_reply(buffer, pinfo, tree)
+    else pinfo.cols.info = "Reply(0x" .. hex(report_type_value) .. ", 0x"..command_value..") ->"..result_text .. getBytes(buffer(8,buffer:len()-8)) end
 
     tree:add_le(reportType,   buffer(0,1)):append_text(report_type_text)
 
@@ -253,13 +289,12 @@ local function parse_reply(buffer, pinfo, tree)
 end
 
 function switch2_protocol.dissector(buffer, pinfo, tree)
-    length = buffer:len()
-    if length == 0 then return end
+    if buffer:len() == 0 then return end
 
     pinfo.cols.protocol = switch2_protocol.name
 
     local subtree = tree:add(switch2_protocol, buffer(), "Switch2 Protocol Data")
-    
+
     local report_mode_value = buffer(1,1):le_uint()
     local report_mode_text = " (Unknown)"
 
