@@ -1,6 +1,6 @@
 switch2hid_protocol = Proto("sw2_hid",  "Nintendo Switch 2 HID")
 
-local reportMode  = ProtoField.uint8("sw2_hid.reportMode", "ReportMode", base.HEX)
+local inputType  = ProtoField.uint8("sw2_hid.inputType", "InputType", base.HEX)
 local packetId  = ProtoField.uint8("sw2_hid.packetId", "PacketId", base.DEC)
 local buttons   = ProtoField.uint8("sw2_hid.buttons",  "Buttons",  base.HEX)
 local leftStick   = ProtoField.uint8("sw2_hid.leftStick",  "LeftStick",  base.HEX)
@@ -8,12 +8,13 @@ local rightStick   = ProtoField.uint8("sw2_hid.rightStick",  "RightStick",  base
 local vibrationCode   = ProtoField.uint8("sw2_hid.vibrationCode",  "VibrationCode",  base.HEX)
 local motion   = ProtoField.bytes("sw2_hid.motion",  "Motion",  base.SPACE)
 
-switch2hid_protocol.fields = {reportMode, packetId, buttons, leftStick, rightStick, vibrationCode, motion}
+switch2hid_protocol.fields = {inputType, packetId, buttons, leftStick, rightStick, vibrationCode, motion}
 
 
 switch2_protocol = Proto("switch2",  "Nintendo Switch 2 controller Protocol")
 
-local reportMode2  = ProtoField.uint8("switch2.reportMode", "ReportMode", base.HEX)
+local reportType  = ProtoField.uint8("switch2.reportType", "reportType", base.HEX)
+local reportMode  = ProtoField.uint8("switch2.reportMode", "reportMode", base.HEX)
 local command  = ProtoField.uint8("switch2.command", "Command", base.HEX)
 -- spi
 local spiLength  = ProtoField.uint8("switch2.spiLength", "SpiLength", base.DEC)
@@ -21,7 +22,7 @@ local spiCommand  = ProtoField.uint8("switch2.spiCommand", "SpiCommand", base.HE
 local spiAddress  = ProtoField.uint8("switch2.spiAddress", "SpiAddress", base.HEX)
 local spiData  = ProtoField.bytes("switch2.spiData", "SpiData", base.NONE)
 
-switch2_protocol.fields = {reportMode2, command, spiLength, spiCommand, spiAddress, spiData}
+switch2_protocol.fields = {reportType, reportMode, command, spiLength, spiCommand, spiAddress, spiData}
 
 local function parse_buttons(buttons_value)
     -- byte & (1 << n) > 0
@@ -87,10 +88,9 @@ local function parse_buttons(buttons_value)
 end
 
 local function parse_stick(stick_value)
-
     local raw_axis_x = stick_value:get_index(0) + bit.lshift(bit.band(stick_value:get_index(1),0xF),8)
     local raw_axis_y = bit.lshift(stick_value:get_index(2),4) + bit.rshift(stick_value:get_index(1),4)
-    
+
     return " (" .. raw_axis_x .. ", " .. raw_axis_y .. ")"
 end
 
@@ -104,14 +104,14 @@ local function parse_input_report(buffer, pinfo, subtree)
     local stick_l_text   = parse_stick(stick_l_value:bytes())
     local stick_r_value = buffer(9,3)
     local stick_r_text   = parse_stick(stick_r_value:bytes())
-    
+
     subtree:add_le(packetId, packet_id_value)
     subtree:add_le(buttons, buttons_value):append_text(buttons_text)
     subtree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
     subtree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
     subtree:add_le(vibrationCode, buffer(12,1))
     subtree:add_le(motion, buffer(13,12*3))
-    
+
     pinfo.cols.info = "Input report "..packet_id_text..":"..buttons_text..stick_l_text..stick_r_text
 end
 
@@ -123,11 +123,15 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
 
     local subtree = tree:add(switch2hid_protocol, buffer(), "Switch2 HID Data")
 
-    local report_mode_value = buffer(0,1):le_uint()
-    subtree:add_le(reportMode,   buffer(0,1))
+    local input_type_value = buffer(0,1):le_uint()
+    subtree:add_le(inputType,   buffer(0,1))
     
-    if report_mode_value == 0x09 then parse_input_report(buffer, pinfo, subtree) end
+    if input_type_value == 0x09 then parse_input_report(buffer, pinfo, subtree) end
 
+end
+
+local function hex(value)
+    return  string.format('%02x',value)
 end
 
 local function getBytes(buffer)
@@ -137,9 +141,9 @@ local function getBytes(buffer)
 
     if length > 10 then length=10 end
     for i=0,length do 
-        table.insert(buttons_array, string.format('%02x',buffer:bytes():get_index(i))) 
+        table.insert(buttons_array, hex(buffer:bytes():get_index(i)))
     end
-    
+
     if #buttons_array ~= 0 then
         buttons_text = " (" .. table.concat(buttons_array, ",") .. ")"
     end
@@ -149,44 +153,54 @@ end
 local function parse_spi_command(buffer, pinfo, tree)
     local length_value = buffer(8,1)
     local sub_command_value = buffer(9,1)
-    local address_value = buffer(11,4)
+    local address_value = buffer(12,4)
     
     tree:add_le(spiLength, length_value)
     tree:add_le(spiCommand, sub_command_value)
     tree:add_le(spiAddress,  address_value)
 
-    pinfo.cols.info = "Request SPI ".. sub_command_value .. ": address 0x" .. address_value .. " size 0x"..length_value
+    pinfo.cols.info = "Request SPI ".. sub_command_value .. ": address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
+    return " (SPI)"
 end
 
 local function parse_request(buffer, pinfo, tree)
-    local command_value = buffer(3,1):le_uint()
-    tree:add_le(command,   buffer(3,1))
+    local report_type_value = buffer(0,1):le_uint()
+    local report_type_text = "(Unknown)"
 
-    if command_value == 0x04 then parse_spi_command(buffer, pinfo, tree)
+    if report_type_value == 0x02 then report_type_text = parse_spi_command(buffer, pinfo, tree)
     else pinfo.cols.info = "Request("..command_value..") ->".. getBytes(buffer) end
+
+    tree:add_le(reportType,   buffer(0,1)):append_text(report_type_text)
+
+    return " (Request)"
 end
 
 local function parse_spi_reply(buffer, pinfo, tree)
     local length_value = buffer(8,1)
     local sub_command_value = buffer(5,1)
-    local address_value = buffer(11,4)
+    local address_value = buffer(12,4)
     local data_value = buffer(0x10,length_value:le_uint())
-    
+
     tree:add_le(spiLength, length_value)
     tree:add_le(spiCommand, sub_command_value)
     tree:add_le(spiAddress,  address_value)
     tree:add_le(spiData,  data_value)
 
-    pinfo.cols.info = "Reply SPI ".. sub_command_value .. ": address 0x" .. address_value .. " size 0x"..length_value
+    pinfo.cols.info = "Reply SPI ".. sub_command_value .. ": address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
+    return " (SPI)"
 end
 
 local function parse_reply(buffer, pinfo, tree)
-    local command_value = buffer(3,1):le_uint()
-    tree:add_le(command,   buffer(3,1))
+    local report_type_value = buffer(0,1):le_uint()
+    local report_type_text = "(Unknown)"
 
-    if command_value == 0x04 then parse_spi_reply(buffer, pinfo, tree)
+    if report_type_value == 0x02 then report_type_text = parse_spi_reply(buffer, pinfo, tree)
     else pinfo.cols.info = "Reply   ->".. getBytes(buffer)
     end
+
+    tree:add_le(reportType,   buffer(0,1)):append_text(report_type_text)
+
+    return " (Reply)"
 end
 
 function switch2_protocol.dissector(buffer, pinfo, tree)
@@ -194,14 +208,16 @@ function switch2_protocol.dissector(buffer, pinfo, tree)
     if length == 0 then return end
 
     pinfo.cols.protocol = switch2_protocol.name
-    
+
     local subtree = tree:add(switch2_protocol, buffer(), "Switch2 Protocol Data")
     
     local report_mode_value = buffer(1,1):le_uint()
-    subtree:add_le(reportMode2,   buffer(1,1))
-    
-    if report_mode_value == 0x01 then parse_reply(buffer, pinfo, tree)
-    elseif report_mode_value == 0x91 then parse_request(buffer, pinfo, tree) end
+    local report_mode_text = " (Unknown)"
+
+    if report_mode_value == 0x01 then report_mode_text = parse_reply(buffer, pinfo, subtree)
+    elseif report_mode_value == 0x91 then report_mode_text = parse_request(buffer, pinfo, subtree) end
+
+    subtree:add_le(reportMode,   buffer(1,1)):append_text(report_mode_text)
     
 end
 
