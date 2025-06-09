@@ -6,9 +6,11 @@ local buttons   = ProtoField.uint8("sw2_hid.buttons",  "Buttons",  base.HEX)
 local leftStick   = ProtoField.uint8("sw2_hid.leftStick",  "LeftStick",  base.HEX)
 local rightStick   = ProtoField.uint8("sw2_hid.rightStick",  "RightStick",  base.HEX)
 local vibrationCode   = ProtoField.uint8("sw2_hid.vibrationCode",  "VibrationCode",  base.HEX)
+local imuLength   = ProtoField.uint8("sw2_hid.imuLength",  "ImuLength",  base.HEX)
+local imuSample   = ProtoField.uint8("sw2_hid.imuSample",  "ImuSample",  base.HEX)
 local motion   = ProtoField.bytes("sw2_hid.motion",  "Motion",  base.SPACE)
 
-switch2hid_protocol.fields = {inputType, packetId, buttons, leftStick, rightStick, vibrationCode, motion}
+switch2hid_protocol.fields = {inputType, packetId, buttons, leftStick, rightStick, vibrationCode, imuLength, imuSample, motion}
 
 
 switch2_protocol = Proto("switch2",  "Nintendo Switch 2 controller Protocol")
@@ -34,12 +36,34 @@ local firmwareData  = ProtoField.bytes("switch2.firmwareData", "FirmwareData", b
 switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern,
                            dataLength, dataData, firmwareLength, firmwareData}
 
+local function hex(value)
+    return string.format('%02x',value)
+end
+
+local function getBytes(buffer)
+    local length = buffer:len() -1
+    local buttons_array = {}
+    local buttons_text = " (none)"
+
+    --if length > 16 then length=16 end
+    for i=0,length do
+        table.insert(buttons_array, hex(buffer:bytes():get_index(i)))
+    end
+
+    if #buttons_array ~= 0 then
+        buttons_text = " (" .. table.concat(buttons_array, " ")
+        --if buffer:len() > 16 then buttons_text = buttons_text .. ",..." end
+        buttons_text = buttons_text .. ")"
+    end
+    return buttons_text
+end
+
 local function parse_buttons(buttons_value)
     -- byte & (1 << n) > 0
     local function is_bit_set(byte, n)
     return bit.band(byte, bit.lshift(1, n)) > 0
     end
-
+    -- check these --
     local DOWN_BUTTON_BIT = 0
     local UP_BUTTON_BIT = 1
     local RIGHT_BUTTON_BIT = 2
@@ -48,6 +72,7 @@ local function parse_buttons(buttons_value)
     local LEFT_SL_BUTTON_BIT = 5
     local L_BUTTON_BIT = 6
     local ZL_BUTTON_BIT = 7
+
     local Y_BUTTON_BIT = 8
     local X_BUTTON_BIT = 9
     local B_BUTTON_BIT = 10
@@ -56,12 +81,14 @@ local function parse_buttons(buttons_value)
     local RIGHT_SL_BUTTON_BIT = 13
     local R_BUTTON_BIT = 14
     local ZR_BUTTON_BIT = 15
+
     local MINUS_BUTTON_BIT = 16
     local PLUS_BUTTON_BIT = 17
     local STICK_R_BUTTON_BIT = 18
     local STICK_L_BUTTON_BIT = 19
     local HOME_BUTTON_BIT = 20
     local CAPTURE_BUTTON_BIT = 21
+    local C_BUTTON_BIT = 22
 
     local buttons_array = {}
 
@@ -87,6 +114,7 @@ local function parse_buttons(buttons_value)
     if is_bit_set(buttons_value, STICK_L_BUTTON_BIT)    then table.insert(buttons_array, "stick L")    end
     if is_bit_set(buttons_value, HOME_BUTTON_BIT)    then table.insert(buttons_array, "home")    end
     if is_bit_set(buttons_value, CAPTURE_BUTTON_BIT)    then table.insert(buttons_array, "capture")    end
+    if is_bit_set(buttons_value, C_BUTTON_BIT)    then table.insert(buttons_array, "C")    end
 
     local buttons_text = " (none)"
 
@@ -104,10 +132,14 @@ local function parse_stick(stick_value)
     return " (" .. raw_axis_x .. ", " .. raw_axis_y .. ")"
 end
 
+local function parse_imu_sample(sample_value)
+    return sample_value:get_index(0) + bit.lshift(bit.band(sample_value:get_index(1),0xF),8)
+end
+
 
 local function parse_input_report(buffer, pinfo, subtree)
     local packet_id_value = buffer(1,1)
-    local packet_id_text = packet_id_value:le_uint()
+    local packet_id_text = hex(packet_id_value:le_uint())
     local buttons_value = buffer(3,3)
     local buttons_text   = parse_buttons(buttons_value:le_uint())
     local stick_l_value = buffer(6,3)
@@ -115,14 +147,27 @@ local function parse_input_report(buffer, pinfo, subtree)
     local stick_r_value = buffer(9,3)
     local stick_r_text   = parse_stick(stick_r_value:bytes())
 
+    local imu_length_value = buffer(15,1)
+    local imu_sample_value = buffer(16,2)
+    local imu_sample_text = parse_imu_sample(imu_sample_value:bytes())
+    local motion_value = buffer(16,imu_length_value:le_uint())
+
     subtree:add_le(packetId, packet_id_value)
     subtree:add_le(buttons, buttons_value):append_text(buttons_text)
     subtree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
     subtree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
     subtree:add_le(vibrationCode, buffer(12,1))
-    subtree:add_le(motion, buffer(13,12*3))
+    subtree:add_le(imuLength, imu_length_value)
+    subtree:add_le(imuSample, imu_sample_value):append_text(" ("..imu_sample_text..")")
+    subtree:add_le(motion, motion_value)
 
-    pinfo.cols.info = "Input report "..packet_id_text..":"..buttons_text..stick_l_text..stick_r_text
+    local info = "Input report "..packet_id_text..":"..buttons_text..stick_l_text..stick_r_text
+
+    if imu_length_value:le_uint() > 0 then
+        info = info .. " timestamp " .. imu_sample_text
+    end
+
+    pinfo.cols.info = info
 end
 
 function switch2hid_protocol.dissector(buffer, pinfo, tree)
@@ -138,28 +183,6 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
 
     if input_type_value == 0x09 then parse_input_report(buffer, pinfo, subtree) end
 
-end
-
-local function hex(value)
-    return string.format('%02x',value)
-end
-
-local function getBytes(buffer)
-    local length = buffer:len() -1
-    local buttons_array = {}
-    local buttons_text = " (none)"
-
-    --if length > 16 then length=16 end
-    for i=0,length do 
-        table.insert(buttons_array, hex(buffer:bytes():get_index(i)))
-    end
-
-    if #buttons_array ~= 0 then
-        buttons_text = " (" .. table.concat(buttons_array, "")
-        --if buffer:len() > 16 then buttons_text = buttons_text .. ",..." end
-        buttons_text = buttons_text .. ")"
-    end
-    return buttons_text
 end
 
 local function parse_result(result_value)
@@ -206,6 +229,9 @@ local function parse_imu_command(buffer, pinfo, tree, command_value)
     local command_text = " (IMU unknown)"
 
     if command_value:le_uint() == 0x02 then
+        pinfo.cols.info = "Request IMU: Disable motion"
+        command_text = " (IMU disable motion)"
+    elseif command_value:le_uint() == 0x04 then
         pinfo.cols.info = "Request IMU: Enable motion"
         command_text = " (IMU enable motion)"
     else
@@ -316,7 +342,8 @@ local function parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
 
     pinfo.cols.info = "Reply   IMU:" .. result_text
 
-    if command_value:le_uint() == 0x02 then command_text = " (IMU enable motion)" end
+    if command_value:le_uint() == 0x02 then command_text = " (IMU disable motion)"
+    elseif command_value:le_uint() == 0x04 then command_text = " (IMU enable motion)" end
 
     tree:add_le(command, command_value):append_text(command_text)
 
