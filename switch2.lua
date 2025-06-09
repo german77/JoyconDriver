@@ -32,9 +32,18 @@ local dataData  = ProtoField.bytes("switch2.dataData", "DataData", base.NONE)
 -- firmware
 local firmwareLength  = ProtoField.uint8("switch2.firmwareLength", "FirmwareLength", base.DEC)
 local firmwareData  = ProtoField.bytes("switch2.firmwareData", "FirmwareData", base.NONE)
+-- mcu
+local mcuReadType  = ProtoField.uint8("switch2.mcuReadType", "McuReadType", base.DEC)
+local mcuBlockCount  = ProtoField.uint8("switch2.mcuBlockCount", "McuBlockCount", base.DEC)
+local mcuReadBlock  = ProtoField.bytes("switch2.mcuReadBlock", "McuReadBlock", base.NONE)
+local mcuTagType  = ProtoField.uint8("switch2.mcuTagType", "McuTagType", base.DEC)
+local mcuUID  = ProtoField.bytes("switch2.mcuUID", "McuUID", base.NONE)
+local mcuUIDLength  = ProtoField.uint8("switch2.mcuUIDLength", "McuUIDLength", base.DEC)
+local mcuUnk  = ProtoField.uint8("switch2.mcuUnk", "McuUnk", base.HEX)
 
 switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern,
-                           dataLength, dataData, firmwareLength, firmwareData}
+                           dataLength, dataData, firmwareLength, firmwareData, mcuReadType, mcuBlockCount, mcuReadBlock,
+                           mcuTagType, mcuUID, mcuUIDLength, mcuUnk}
 
 local function hex(value)
     return string.format('%02x',value)
@@ -194,6 +203,51 @@ local function parse_spi_address(address)
     return " (Unknown)"
 end
 
+local function parse_mcu_read_type(read_type)
+    if read_type == 19 then return " (Read NTAG)" end
+    return " (Unknown)"
+end
+
+local function parse_mcu_tag_type(tag_type)
+    if tag_type == 0x01 then return " (NTAG 215)" end
+    return " (Unknown)"
+end
+
+local function parse_mcu_read_device(buffer, pinfo, tree)
+    local mcu_read_type_value = buffer(5,1)
+    local mcu_read_type_text = parse_mcu_read_type(mcu_read_type_value:le_uint())
+    local mcu_unknown_value = buffer(8,1)
+    local uid_length_value = buffer(9,1)
+    local uid_value = buffer(10,uid_length_value:le_uint())
+    local tag_type_value = buffer(17, 1)
+    local tag_type_text = parse_mcu_tag_type(tag_type_value:le_uint())
+    local block_count_value = buffer(18, 1)
+    local blocks_value = buffer(19, block_count_value:le_uint()*2)
+
+    tree:add_le(mcuUnk, mcu_unknown_value)
+    tree:add_le(mcuUIDLength, uid_length_value)
+    tree:add_le(mcuUID, uid_value)
+    tree:add_le(mcuTagType, tag_type_value):append_text(tag_type_text)
+    tree:add_le(mcuBlockCount, block_count_value)
+    tree:add_le(mcuReadBlock, blocks_value)
+    tree:add_le(mcuReadType, mcu_read_type_value):append_text(mcu_read_type_text)
+
+    pinfo.cols.info = "Request MCU read device:"..tag_type_text.." uid" .. getBytes(uid_value) .. " block" .. getBytes(blocks_value)
+
+    return " (MCU read device)"
+end
+
+local function parse_mcu_command(buffer, pinfo, tree, command_value)
+    local command_text = " (MCU unknown)"
+
+    if command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device(buffer, pinfo, tree)
+    else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. getBytes(buffer(5,buffer:len()-5)) end
+
+    tree:add_le(command, command_value):append_text(command_text)
+
+    return " (MCU)"
+end
+
 local function parse_spi_command(buffer, pinfo, tree, command_value)
     local length_value = buffer(8,1)
     local sub_command_value = buffer(9,1)
@@ -292,7 +346,8 @@ local function parse_request(buffer, pinfo, tree)
     local report_type_text = " (Unknown)"
     local command_value = buffer(3,1)
 
-    if report_type_value == 0x02 then report_type_text = parse_spi_command(buffer, pinfo, tree, command_value)
+    if report_type_value == 0x01 then report_type_text = parse_mcu_command(buffer, pinfo, tree, command_value)
+    elseif report_type_value == 0x02 then report_type_text = parse_spi_command(buffer, pinfo, tree, command_value)
     elseif report_type_value == 0x09 then report_type_text = parse_player_lights_command(buffer, pinfo, tree, command_value)
     elseif report_type_value == 0x0c then report_type_text = parse_imu_command(buffer, pinfo, tree, command_value)
     elseif report_type_value == 0x0d then report_type_text = parse_firmware_command(buffer, pinfo, tree, command_value)
@@ -305,6 +360,27 @@ local function parse_request(buffer, pinfo, tree)
     tree:add_le(reportType,   buffer(0,1)):append_text(report_type_text)
 
     return " (Request)"
+end
+
+
+local function parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
+    local result_text = parse_result(result_value:le_uint())
+
+    pinfo.cols.info = "Reply   MCU read device:" .. result_text
+
+    return " (MCU read device)"
+end
+
+local function parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
+    local command_text = " (MCU unknown)"
+    local result_text = parse_result(result_value:le_uint())
+
+    if command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
+    else pinfo.cols.info = "Reply   MCU(0x"..command_value.."):" .. result_text.. " ->" .. getBytes(buffer(8,buffer:len()-8)) end
+
+    tree:add_le(command, command_value):append_text(command_text)
+
+    return " (MCU)"
 end
 
 local function parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
@@ -398,7 +474,8 @@ local function parse_reply(buffer, pinfo, tree)
 
     tree:add_le(result, result_value):append_text(result_text)
 
-    if report_type_value == 0x02 then report_type_text = parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
+    if report_type_value == 0x01 then report_type_text = parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value == 0x02 then report_type_text = parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value == 0x09 then report_type_text = parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value == 0x0c then report_type_text = parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value == 0x0d then report_type_text = parse_firmware_reply(buffer, pinfo, tree, command_value, result_value)
