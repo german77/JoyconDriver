@@ -15,8 +15,8 @@ switch2hid_protocol.fields = {inputType, packetId, buttons, leftStick, rightStic
 
 switch2_protocol = Proto("switch2",  "Nintendo Switch 2 controller Protocol")
 
-local reportType  = ProtoField.uint8("switch2.reportType", "reportType", base.HEX)
-local reportMode  = ProtoField.uint8("switch2.reportMode", "reportMode", base.HEX)
+local reportType  = ProtoField.uint8("switch2.reportType", "ReportType", base.HEX)
+local reportMode  = ProtoField.uint8("switch2.reportMode", "ReportMode", base.HEX)
 local command  = ProtoField.uint8("switch2.command", "Command", base.HEX)
 local result  = ProtoField.uint8("switch2.result", "Result", base.HEX)
 -- spi
@@ -36,17 +36,23 @@ local firmwareData  = ProtoField.bytes("switch2.firmwareData", "FirmwareData", b
 local mcuReadType  = ProtoField.uint8("switch2.mcuReadType", "McuReadType", base.DEC)
 local mcuBlockCount  = ProtoField.uint8("switch2.mcuBlockCount", "McuBlockCount", base.DEC)
 local mcuReadBlock  = ProtoField.bytes("switch2.mcuReadBlock", "McuReadBlock", base.NONE)
+local mcuBlock0Data  = ProtoField.bytes("switch2.mcuBlock0Data", "McuBlock0Data", base.NONE)
+local mcuBlock1Data  = ProtoField.bytes("switch2.mcuBlock1Data", "McuBlock1Data", base.NONE)
+local mcuBlock2Data  = ProtoField.bytes("switch2.mcuBlock2Data", "McuBlock2Data", base.NONE)
+local mcuBlock3Data  = ProtoField.bytes("switch2.mcuBlock3Data", "McuBlock3Data", base.NONE)
 local mcuTagType  = ProtoField.uint8("switch2.mcuTagType", "McuTagType", base.DEC)
 local mcuUID  = ProtoField.bytes("switch2.mcuUID", "McuUID", base.NONE)
 local mcuUIDLength  = ProtoField.uint8("switch2.mcuUIDLength", "McuUIDLength", base.DEC)
 local mcuUnk  = ProtoField.uint8("switch2.mcuUnk", "McuUnk", base.HEX)
 local mcuDataOffset  = ProtoField.uint8("switch2.mcuDataOffset", "mcuDataOffset", base.HEX)
 local mcuDataLength  = ProtoField.uint8("switch2.mcuDataLength", "mcuDataLength", base.HEX)
+local mcuDataType  = ProtoField.uint8("switch2.mcuData", "mcuData", base.HEX)
 local mcuData  = ProtoField.bytes("switch2.mcuData", "mcuData", base.NONE)
 
 switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern,
                            dataLength, dataData, firmwareLength, firmwareData, mcuReadType, mcuBlockCount, mcuReadBlock,
-                           mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuData}
+                           mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType, mcuData,
+                           mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data}
 
 local function hex(value)
     return string.format('%02x',value)
@@ -216,6 +222,15 @@ local function parse_mcu_tag_type(tag_type)
     return " (Unknown)"
 end
 
+local function parse_mcu_state(buffer, pinfo, tree)
+    local data_value = buffer(5,3)
+
+    tree:add_le(mcuData, data_value)
+
+    pinfo.cols.info = "Request MCU state: ->" .. getBytes(data_value)
+    return " (MCU state)"
+end
+
 local function parse_mcu_read_device(buffer, pinfo, tree)
     local mcu_read_type_value = buffer(5,1)
     local mcu_read_type_text = parse_mcu_read_type(mcu_read_type_value:le_uint())
@@ -263,7 +278,8 @@ end
 local function parse_mcu_command(buffer, pinfo, tree, command_value)
     local command_text = " (MCU unknown)"
 
-    if command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device(buffer, pinfo, tree)
+    if command_value:le_uint() == 0x05 then command_text = parse_mcu_state(buffer, pinfo, tree)
+    elseif command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device(buffer, pinfo, tree)
     elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_data(buffer, pinfo, tree)
     elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_data(buffer, pinfo, tree)
     else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. getBytes(buffer(5,buffer:len()-5)) end
@@ -388,6 +404,19 @@ local function parse_request(buffer, pinfo, tree)
 end
 
 
+local function parse_mcu_state_reply(buffer, pinfo, tree, result_value)
+    -- TODO: Include the rest of the state data
+    local result_text = parse_result(result_value:le_uint())
+    local uid_length_value = buffer(0x10,1)
+    local uid_value = buffer(0x11,uid_length_value:le_uint())
+
+    tree:add_le(mcuUIDLength, uid_length_value)
+    tree:add_le(mcuUID, uid_value)
+
+    pinfo.cols.info = "Reply   MCU state:" .. result_text.." uid"..getBytes(uid_value)
+    return " (MCU state)"
+end
+
 local function parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
     local result_text = parse_result(result_value:le_uint())
 
@@ -404,10 +433,36 @@ local function parse_mcu_write_data_reply(buffer, pinfo, tree, result_value)
     return " (MCU write data)"
 end
 
+local function parse_mcu_nfc_data(buffer, pinfo, tree, result_value)
+    -- TODO: Include the rest of the state data
+    local result_text = parse_result(result_value:le_uint())
+    local uid_length_value = buffer(7,1)
+    local uid_value = buffer(8,uid_length_value:le_uint())
+    local block_count_value = buffer(0x33, 1)
+    local blocks_value = buffer(0x34, block_count_value:le_uint()*2)
+
+    tree:add_le(mcuUIDLength, uid_length_value)
+    tree:add_le(mcuBlockCount, block_count_value)
+    tree:add_le(mcuReadBlock, blocks_value)
+
+    pinfo.cols.info = "Reply   MCU read nfc data:" .. result_text.." uid"..getBytes(uid_value) .. " ->" .. getBytes(buffer)
+
+    return " (NFC)"
+end
+
 local function parse_mcu_read_data_reply(buffer, pinfo, tree, result_value)
     local result_text = parse_result(result_value:le_uint())
+    local data_type_value = buffer(8, 1)
+    local data_type_text = " (Unknown)"
+    local data_length_value = buffer(9, 2)
+    local data_value = buffer(0x0b,data_length_value:le_uint())
 
-    pinfo.cols.info = "Reply   MCU read data:" .. result_text .. " ->" .. getBytes(buffer(8,buffer:len()-8))
+    if data_type_value:le_uint() == 0x01 then data_type_text = parse_mcu_nfc_data(data_value, pinfo, tree, result_value)
+    else pinfo.cols.info = "Reply   MCU read data:" .. result_text .. " ->" .. getBytes(data_value) end
+
+    tree:add_le(mcuDataLength, data_length_value)
+    tree:add_le(mcuData, data_value)
+    tree:add_le(mcuDataType, data_type_value):append_text(data_type_text)
 
     return " (MCU read data)"
 end
@@ -416,7 +471,8 @@ local function parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (MCU unknown)"
     local result_text = parse_result(result_value:le_uint())
 
-    if command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
+    if command_value:le_uint() == 0x05 then command_text = parse_mcu_state_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_data_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_data_reply(buffer, pinfo, tree, result_value)
     else pinfo.cols.info = "Reply   MCU(0x"..command_value.."):" .. result_text.. " ->" .. getBytes(buffer(8,buffer:len()-8)) end
