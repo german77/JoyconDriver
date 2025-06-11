@@ -36,6 +36,7 @@ local firmwareData  = ProtoField.bytes("switch2.firmwareData", "FirmwareData", b
 local mcuReadType  = ProtoField.uint8("switch2.mcuReadType", "McuReadType", base.DEC)
 local mcuBlockCount  = ProtoField.uint8("switch2.mcuBlockCount", "McuBlockCount", base.DEC)
 local mcuReadBlock  = ProtoField.bytes("switch2.mcuReadBlock", "McuReadBlock", base.NONE)
+local mcuWriteBlock  = ProtoField.string("switch2.mcuWriteBlock", "McuWriteBlock")
 local mcuBlock0Data  = ProtoField.bytes("switch2.mcuBlock0Data", "McuBlock0Data", base.NONE)
 local mcuBlock1Data  = ProtoField.bytes("switch2.mcuBlock1Data", "McuBlock1Data", base.NONE)
 local mcuBlock2Data  = ProtoField.bytes("switch2.mcuBlock2Data", "McuBlock2Data", base.NONE)
@@ -44,18 +45,27 @@ local mcuTagType  = ProtoField.uint8("switch2.mcuTagType", "McuTagType", base.DE
 local mcuUID  = ProtoField.bytes("switch2.mcuUID", "McuUID", base.NONE)
 local mcuUIDLength  = ProtoField.uint8("switch2.mcuUIDLength", "McuUIDLength", base.DEC)
 local mcuUnk  = ProtoField.uint8("switch2.mcuUnk", "McuUnk", base.HEX)
-local mcuDataOffset  = ProtoField.uint8("switch2.mcuDataOffset", "mcuDataOffset", base.HEX)
-local mcuDataLength  = ProtoField.uint8("switch2.mcuDataLength", "mcuDataLength", base.HEX)
-local mcuDataType  = ProtoField.uint8("switch2.mcuData", "mcuData", base.HEX)
-local mcuData  = ProtoField.bytes("switch2.mcuData", "mcuData", base.NONE)
+local mcuDataOffset  = ProtoField.uint8("switch2.mcuDataOffset", "McuDataOffset", base.HEX)
+local mcuDataLength  = ProtoField.uint8("switch2.mcuDataLength", "McuDataLength", base.HEX)
+local mcuDataType  = ProtoField.uint8("switch2.mcuDataType", "McuDataType", base.HEX)
+local mcuData  = ProtoField.bytes("switch2.mcuData", "McuData", base.NONE)
+
+local mcuDataBuffer = {}
+local mcuDataBufferSize = 0
+
 
 switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern,
                            dataLength, dataData, firmwareLength, firmwareData, mcuReadType, mcuBlockCount, mcuReadBlock,
                            mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType, mcuData,
-                           mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data}
+                           mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock}
 
 local function hex(value)
+    if value == nil then return "" end
     return string.format('%02x',value)
+end
+
+function table.clone(org)
+  return {table.unpack(org)}
 end
 
 local function getBytes(buffer)
@@ -63,15 +73,26 @@ local function getBytes(buffer)
     local buttons_array = {}
     local buttons_text = " (none)"
 
-    --if length > 16 then length=16 end
     for i=0,length do
         table.insert(buttons_array, hex(buffer:bytes():get_index(i)))
     end
 
     if #buttons_array ~= 0 then
-        buttons_text = " (" .. table.concat(buttons_array, " ")
-        --if buffer:len() > 16 then buttons_text = buttons_text .. ",..." end
-        buttons_text = buttons_text .. ")"
+        buttons_text = " (" .. table.concat(buttons_array, "") .. ")"
+    end
+    return buttons_text
+end
+
+local function getBytes2(buffer, size)
+    local buttons_array = {}
+    local buttons_text = "00"
+
+    for i=0,size - 1 do
+        table.insert(buttons_array, hex(buffer[i]))
+    end
+
+    if #buttons_array ~= 0 then
+        buttons_text = table.concat(buttons_array, "")
     end
     return buttons_text
 end
@@ -250,29 +271,103 @@ local function parse_mcu_read_device(buffer, pinfo, tree)
     tree:add_le(mcuReadBlock, blocks_value)
     tree:add_le(mcuReadType, mcu_read_type_value):append_text(mcu_read_type_text)
 
-    pinfo.cols.info = "Request MCU read device:"..tag_type_text.." uid" .. getBytes(uid_value) .. " block" .. getBytes(blocks_value)
+    pinfo.cols.info = "Request MCU read device:"..tag_type_text.." uid" .. getBytes(uid_value) .. " blocks" .. getBytes(blocks_value)
 
     return " (MCU read device)"
 end
 
-local function parse_mcu_write_data(buffer, pinfo, tree)
-    local mcu_unknown_value = buffer(5,1)
-    local data_offset_value = buffer(8,2)
-    local data_length_value = buffer(10,1)
-    local data_value = buffer(12,data_length_value:le_uint())
+local function parse_mcu_write_device(buffer, pinfo, tree)
+    local buffer_text= getBytes2(mcuDataBuffer, 0x1c6) .. "00";
+    local mcu_buffer = ByteArray.new(buffer_text):tvb("MCU buffer")
+
+    local uid_length_value = mcu_buffer(1,1)
+    local uid_value = mcu_buffer(2,uid_length_value:le_uint())
+    local tag_type_value = mcu_buffer(9, 1)
+    local tag_type_text = parse_mcu_tag_type(tag_type_value:le_uint())
+    local block_count_value = mcu_buffer(0x15, 1)
+    local blocks_text=""
+    local block_offset =0
+
+    if block_count_value:le_uint() >= 1 then
+        local block_number_value = mcu_buffer(0x16+block_offset, 1)
+        local block_size = mcu_buffer(0x17+block_offset, 1)
+        local block_0_value = mcu_buffer(0x18+block_offset, block_size:le_uint())
+        block_offset = block_offset + block_size:le_uint() + 2
+
+        blocks_text = block_number_value .. "-" .. block_size
+        tree:add_le(mcuBlock0Data, block_0_value)
+    end
+    if block_count_value:le_uint() >= 2 then
+        local block_number_value = mcu_buffer(0x16+block_offset, 1)
+        local block_size = mcu_buffer(0x17+block_offset, 1)
+        local block_1_value = mcu_buffer(0x18+block_offset, block_size:le_uint())
+        block_offset = block_offset + block_size:le_uint() + 2
+
+        blocks_text = blocks_text .. ", " .. block_number_value .. "-" .. block_size
+        tree:add_le(mcuBlock1Data, block_1_value)
+    end
+    if block_count_value:le_uint() >= 3 then
+        local block_number_value = mcu_buffer(0x16+block_offset, 1)
+        local block_size = mcu_buffer(0x17+block_offset, 1)
+        local block_2_value = mcu_buffer(0x18+block_offset, block_size:le_uint())
+        block_offset = block_offset + block_size:le_uint() + 2
+
+        blocks_text = blocks_text .. ", " .. block_number_value .. "-" .. block_size
+        tree:add_le(mcuBlock2Data, block_2_value)
+    end
+    if block_count_value:le_uint() >= 4 then
+        local block_number_value = mcu_buffer(0x16+block_offset, 1)
+        local block_size = mcu_buffer(0x17+block_offset, 1)
+        local block_3_value = mcu_buffer(0x18+block_offset, block_size:le_uint())
+        block_offset = block_offset + block_size:le_uint() + 2
+
+        blocks_text = blocks_text .. ", " .. block_number_value .. "-" .. block_size
+        tree:add_le(mcuBlock3Data, block_3_value)
+    end
+
+
+    pinfo.cols.info = "Request MCU write device: Buffer size 0x"..hex(mcuDataBufferSize).. " blocks ".. blocks_text
+
+    tree:add_le(mcuWriteBlock, blocks_text)
+    tree:add_le(mcuBlockCount, block_count_value)
+    tree:add_le(mcuUIDLength, uid_length_value)
+    tree:add_le(mcuUID, uid_value)
+    tree:add_le(mcuTagType, tag_type_value):append_text(tag_type_text)
+    tree:add_le(mcuDataLength, mcuDataBufferSize)
+
+    --mcuDataBufferSize =0;
+    --mcuDataBuffer = {};
+
+    return " (MCU write device)"
+end
+
+local function parse_mcu_write_buffer(buffer, pinfo, tree)
+    local mcu_unknown_value = buffer(5, 1)
+    local data_offset_value = buffer(8, 2)
+    local data_length_value = buffer(10, 1)
+    local data_value = buffer(12, data_length_value:le_uint())
 
     tree:add_le(mcuUnk, mcu_unknown_value)
     tree:add_le(mcuDataOffset, data_offset_value)
     tree:add_le(mcuDataLength, data_length_value)
     tree:add_le(mcuData, data_value)
 
-    pinfo.cols.info = "Request MCU write data: offset 0x".. hex(data_offset_value:le_uint()).. " ->" .. getBytes(data_value)
-    return " (MCU write data)"
+    local offset=data_offset_value:le_uint() + 0
+    for i=0,data_length_value:le_uint() - 1 do
+        mcuDataBuffer[i+offset] = data_value:bytes():get_index(i)
+    end
+
+    if mcuDataBufferSize < data_offset_value:le_uint() + data_length_value:le_uint() then
+        mcuDataBufferSize = data_offset_value:le_uint() + data_length_value:le_uint()
+    end
+
+    pinfo.cols.info = "Request MCU write buffer: offset 0x".. hex(data_offset_value:le_uint()).. " ->" .. getBytes(data_value)
+    return " (MCU write buffer)"
 end
 
-local function parse_mcu_read_data(buffer, pinfo, tree)
-    pinfo.cols.info = "Request MCU read data: ->".. getBytes(buffer(5,buffer:len()-5))
-    return " (MCU read data)"
+local function parse_mcu_read_buffer(buffer, pinfo, tree)
+    pinfo.cols.info = "Request MCU read buffer: ->".. getBytes(buffer(5,buffer:len()-5))
+    return " (MCU read buffer)"
 end
 
 local function parse_mcu_command(buffer, pinfo, tree, command_value)
@@ -280,8 +375,9 @@ local function parse_mcu_command(buffer, pinfo, tree, command_value)
 
     if command_value:le_uint() == 0x05 then command_text = parse_mcu_state(buffer, pinfo, tree)
     elseif command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device(buffer, pinfo, tree)
-    elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_data(buffer, pinfo, tree)
-    elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_data(buffer, pinfo, tree)
+    elseif command_value:le_uint() == 0x08 then command_text = parse_mcu_write_device(buffer, pinfo, tree)
+    elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_buffer(buffer, pinfo, tree)
+    elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_buffer(buffer, pinfo, tree)
     else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. getBytes(buffer(5,buffer:len()-5)) end
 
     tree:add_le(command, command_value):append_text(command_text)
@@ -290,9 +386,9 @@ local function parse_mcu_command(buffer, pinfo, tree, command_value)
 end
 
 local function parse_spi_command(buffer, pinfo, tree, command_value)
-    local length_value = buffer(8,1)
-    local sub_command_value = buffer(9,1)
-    local address_value = buffer(0xc,4)
+    local length_value = buffer(8, 1)
+    local sub_command_value = buffer(9, 1)
+    local address_value = buffer(0xc, 4)
 
     tree:add_le(spiLength, length_value)
     tree:add_le(spiCommand, sub_command_value)
@@ -305,7 +401,7 @@ end
 
 local function parse_player_lights_command(buffer, pinfo, tree, command_value)
     local command_text = " (Player lights unknown)"
-    local led_pattern_value = buffer(8,1)
+    local led_pattern_value = buffer(8, 1)
 
     if command_value:le_uint() == 0x07 then
         pinfo.cols.info = "Request Player lights: set led pattern 0x" .. hex(led_pattern_value:le_uint())
@@ -339,7 +435,7 @@ local function parse_imu_command(buffer, pinfo, tree, command_value)
 end
 
 local function parse_firmware_properties(buffer, pinfo, tree)
-    local length_value = buffer(0xd,4)
+    local length_value = buffer(0xd, 4)
 
     tree:add_le(firmwareLength, length_value)
 
@@ -348,8 +444,8 @@ local function parse_firmware_properties(buffer, pinfo, tree)
 end
 
 local function parse_firmware_data(buffer, pinfo, tree)
-    local length_value = buffer(8,1)
-    local data_value = buffer(0xc,length_value:le_uint())
+    local length_value = buffer(8, 1)
+    local data_value = buffer(0xc, length_value:le_uint())
 
     tree:add_le(firmwareLength, length_value)
     tree:add_le(firmwareData, data_value)
@@ -425,12 +521,20 @@ local function parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
     return " (MCU read device)"
 end
 
-local function parse_mcu_write_data_reply(buffer, pinfo, tree, result_value)
+local function parse_mcu_write_device_reply(buffer, pinfo, tree, result_value)
     local result_text = parse_result(result_value:le_uint())
 
-    pinfo.cols.info = "Reply   MCU write data:" .. result_text
+    pinfo.cols.info = "Reply   MCU write device:" .. result_text
 
-    return " (MCU write data)"
+    return " (MCU write device)"
+end
+
+local function parse_mcu_write_buffer_reply(buffer, pinfo, tree, result_value)
+    local result_text = parse_result(result_value:le_uint())
+
+    pinfo.cols.info = "Reply   MCU write buffer:" .. result_text
+
+    return " (MCU write buffer)"
 end
 
 local function parse_mcu_nfc_data(buffer, pinfo, tree, result_value)
@@ -440,31 +544,72 @@ local function parse_mcu_nfc_data(buffer, pinfo, tree, result_value)
     local uid_value = buffer(8,uid_length_value:le_uint())
     local block_count_value = buffer(0x33, 1)
     local blocks_value = buffer(0x34, block_count_value:le_uint()*2)
+    local block_0_value = buffer(0x3C,0);
+    local block_1_value = buffer(0x3C,0);
+    local block_2_value = buffer(0x3C,0);
+    local block_3_value = buffer(0x3C,0);
+    local block_offset = 0
 
     tree:add_le(mcuUIDLength, uid_length_value)
+    tree:add_le(mcuUID, uid_value)
     tree:add_le(mcuBlockCount, block_count_value)
     tree:add_le(mcuReadBlock, blocks_value)
 
-    pinfo.cols.info = "Reply   MCU read nfc data:" .. result_text.." uid"..getBytes(uid_value) .. " ->" .. getBytes(buffer)
+    if block_count_value:le_uint() >= 1 then
+        local blocks = blocks_value:bytes()
+        local block_size = (blocks:get_index(1)-blocks:get_index(0)+1) * 4
+        block_0_value = buffer(0x3C+block_offset, block_size)
+        block_offset = block_offset + block_size
+
+        tree:add_le(mcuBlock0Data, block_0_value)
+    end
+    if block_count_value:le_uint() >= 2 then
+        local blocks = blocks_value:bytes()
+        local block_size = (blocks:get_index(3)-blocks:get_index(2)+1) * 4
+        block_0_value = buffer(0x3C+block_offset, block_size)
+        block_offset = block_offset + block_size
+
+        tree:add_le(mcuBlock1Data, block_0_value)
+    end
+    if block_count_value:le_uint() >= 3 then
+        local blocks = blocks_value:bytes()
+        local block_size = (blocks:get_index(5)-blocks:get_index(4)+1) * 4
+        block_0_value = buffer(0x3C+block_offset, block_size)
+        block_offset = block_offset + block_size
+
+        tree:add_le(mcuBlock2Data, block_0_value)
+    end
+    if block_count_value:le_uint() >= 4 then
+        local blocks = blocks_value:bytes()
+        local block_size = (blocks:get_index(7)-blocks:get_index(6)+1) * 4
+        block_0_value = buffer(0x3C+block_offset, block_size)
+        block_offset = block_offset + block_size
+
+        tree:add_le(mcuBlock3Data, block_0_value)
+    end
+
+    pinfo.cols.info = "Reply   MCU read nfc data:" .. result_text.." uid"..getBytes(uid_value) .. " blocks " .. getBytes(blocks_value) .. " ->" ..
+                      getBytes(block_0_value) .. getBytes(block_1_value) .. getBytes(block_2_value) .. getBytes(block_3_value)
 
     return " (NFC)"
 end
 
-local function parse_mcu_read_data_reply(buffer, pinfo, tree, result_value)
+local function parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
     local result_text = parse_result(result_value:le_uint())
     local data_type_value = buffer(8, 1)
     local data_type_text = " (Unknown)"
     local data_length_value = buffer(9, 2)
     local data_value = buffer(0x0b,data_length_value:le_uint())
+    local mcu_buffer = data_value:bytes():tvb("MCU buffer")
 
-    if data_type_value:le_uint() == 0x01 then data_type_text = parse_mcu_nfc_data(data_value, pinfo, tree, result_value)
-    else pinfo.cols.info = "Reply   MCU read data:" .. result_text .. " ->" .. getBytes(data_value) end
+    if data_type_value:le_uint() == 0x01 then data_type_text = parse_mcu_nfc_data(mcu_buffer, pinfo, tree, result_value)
+    else pinfo.cols.info = "Reply   MCU read buffer:" .. result_text .. " ->" .. getBytes(data_value) end
 
     tree:add_le(mcuDataLength, data_length_value)
     tree:add_le(mcuData, data_value)
     tree:add_le(mcuDataType, data_type_value):append_text(data_type_text)
 
-    return " (MCU read data)"
+    return " (MCU read buffer)"
 end
 
 local function parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
@@ -473,8 +618,9 @@ local function parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
 
     if command_value:le_uint() == 0x05 then command_text = parse_mcu_state_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
-    elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_data_reply(buffer, pinfo, tree, result_value)
-    elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_data_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == 0x08 then command_text = parse_mcu_write_device_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_buffer_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
     else pinfo.cols.info = "Reply   MCU(0x"..command_value.."):" .. result_text.. " ->" .. getBytes(buffer(8,buffer:len()-8)) end
 
     tree:add_le(command, command_value):append_text(command_text)
