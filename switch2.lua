@@ -230,6 +230,19 @@ local function parse_result(result_value)
 end
 
 local function parse_spi_address(address)
+    if address == 0x000000 then return " (Firmware A)" end -- 0x30000+ bytes
+    if address == 0x013002 then return " (Serial Number)" end -- 14 bytes
+    if address == 0x013012 then return " (Vendor ID)" end -- 2 bytes
+    if address == 0x013014 then return " (Product ID)" end -- 2 bytes
+    if address == 0x013019 then return " (Color A)" end -- 3 bytes
+    if address == 0x01301C then return " (Color B)" end -- 3 bytes
+    if address == 0x01301F then return " (Color C)" end -- 3 bytes
+    if address == 0x013022 then return " (Color D)" end -- 3 bytes
+    if address == 0x013080 then return " (Calibration A)" end -- 64 bytes
+    if address == 0x0130C0 then return " (Calibration B)" end -- 64 bytes
+    if address == 0x015000 then return " (Firmware B)" end -- 0x30000+ bytes
+    if address == 0x1FA008 then return " (Console MAC)" end -- 6 bytes
+    -- Max size 0x200000
     return " (Unknown)"
 end
 
@@ -335,7 +348,7 @@ local function parse_mcu_write_device(buffer, pinfo, tree)
     tree:add_le(mcuTagType, tag_type_value):append_text(tag_type_text)
     tree:add_le(mcuDataLength, mcuDataBufferSize)
 
-    --mcuDataBufferSize =0;
+    mcuDataBufferSize =0;
     --mcuDataBuffer = {};
 
     return " (MCU write device)"
@@ -389,10 +402,11 @@ local function parse_spi_command(buffer, pinfo, tree, command_value)
     local length_value = buffer(8, 1)
     local sub_command_value = buffer(9, 1)
     local address_value = buffer(0xc, 4)
+    local address_text = parse_spi_address(address_value:le_uint())
 
     tree:add_le(spiLength, length_value)
     tree:add_le(spiCommand, sub_command_value)
-    tree:add_le(spiAddress,  address_value)
+    tree:add_le(spiAddress,  address_value):append_text(address_text)
     tree:add_le(command, command_value)
 
     pinfo.cols.info = "Request SPI: address 0x" .. hex(address_value:le_uint()) .. " size 0x"..length_value
@@ -566,26 +580,26 @@ local function parse_mcu_nfc_data(buffer, pinfo, tree, result_value)
     if block_count_value:le_uint() >= 2 then
         local blocks = blocks_value:bytes()
         local block_size = (blocks:get_index(3)-blocks:get_index(2)+1) * 4
-        block_0_value = buffer(0x3C+block_offset, block_size)
+        block_1_value = buffer(0x3C+block_offset, block_size)
         block_offset = block_offset + block_size
 
-        tree:add_le(mcuBlock1Data, block_0_value)
+        tree:add_le(mcuBlock1Data, block_1_value)
     end
     if block_count_value:le_uint() >= 3 then
         local blocks = blocks_value:bytes()
         local block_size = (blocks:get_index(5)-blocks:get_index(4)+1) * 4
-        block_0_value = buffer(0x3C+block_offset, block_size)
+        block_2_value = buffer(0x3C+block_offset, block_size)
         block_offset = block_offset + block_size
 
-        tree:add_le(mcuBlock2Data, block_0_value)
+        tree:add_le(mcuBlock2Data, block_2_value)
     end
     if block_count_value:le_uint() >= 4 then
         local blocks = blocks_value:bytes()
         local block_size = (blocks:get_index(7)-blocks:get_index(6)+1) * 4
-        block_0_value = buffer(0x3C+block_offset, block_size)
+        block_3_value = buffer(0x3C+block_offset, block_size)
         block_offset = block_offset + block_size
 
-        tree:add_le(mcuBlock3Data, block_0_value)
+        tree:add_le(mcuBlock3Data, block_3_value)
     end
 
     pinfo.cols.info = "Reply   MCU read nfc data:" .. result_text.." uid"..getBytes(uid_value) .. " blocks " .. getBytes(blocks_value) .. " ->" ..
