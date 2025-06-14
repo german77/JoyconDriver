@@ -72,13 +72,12 @@ local PidExtGripDfu =       0x2008
 local PidProController =    0x2009
 local PidExtGrip =          0x200E
 local PidProControllerDfu = 0x200F
-local PidJoyconRight =      0x2017
-local PidProController =    0x2018
-local PidProController =    0x2019
-local PidProController =    0x201A
-local PidProController =    0x201E
-local PidProController =    0x201F
-local PidGCController2 =    0x2073
+local PidLucia =            0x2017
+local PidLuciaDfu =         0x2018
+local PidLagon =            0x2019
+local PidLagonDfu =         0x201A
+local PidLager =            0x201E
+local PidLagerDfu =         0x201F
 local PidJoycon2Right =     0x2066
 local PidJoycon2Left =      0x2067
 local PidProController2 =   0x2069
@@ -100,8 +99,8 @@ local SpiCalibrationB =         0x0130C0 -- 0x40 bytes
 local SpiUnknown13100 =         0x013100 -- 0x18 bytes
 local SpiFirmwareB =            0x015000 -- 0x30000+ bytes
 local SpiConsoleMac =           0x1fa008 -- 6 bytes
-local SpiCalibrationJoystickL = 0x1fc040 -- 0xb bytes, 0xFF.. no calibration
-local SpiCalibrationJoystickR = 0x1fc060 -- 0xb bytes, 0xFF.. no calibration
+local SpiCalibrationJoystickL = 0x1fc040 -- 0xb bytes, 0xFF...FF. no calibration
+local SpiCalibrationJoystickR = 0x1fc060 -- 0xb bytes, 0xFF...FF no calibration
 
 local function parse_result(result_value)
     if result_value == 0xf8 then return " (ACK)" end
