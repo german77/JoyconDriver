@@ -56,58 +56,58 @@ local function parse_buttons(buttons_value)
     -- byte & (1 << n) > 0
     local function is_bit_set(byte, mask)
     return bit.band(byte, mask) > 0
-    end
+ end
 
     local buttons_array = {}
 
-    if is_bit_set(buttons_value, DOWN_BUTTON_BIT)    then table.insert(buttons_array, "down")    end
-    if is_bit_set(buttons_value, UP_BUTTON_BIT)    then table.insert(buttons_array, "up")    end
-    if is_bit_set(buttons_value, RIGHT_BUTTON_BIT)    then table.insert(buttons_array, "right")    end
-    if is_bit_set(buttons_value, LEFT_BUTTON_BIT)    then table.insert(buttons_array, "left")    end
-    if is_bit_set(buttons_value, LEFT_SR_BUTTON_BIT)    then table.insert(buttons_array, "left SR")    end
-    if is_bit_set(buttons_value, LEFT_SL_BUTTON_BIT)    then table.insert(buttons_array, "left SL")    end
-    if is_bit_set(buttons_value, L_BUTTON_BIT)    then table.insert(buttons_array, "L")    end
-    if is_bit_set(buttons_value, ZL_BUTTON_BIT)    then table.insert(buttons_array, "ZL")    end
-    if is_bit_set(buttons_value, Y_BUTTON_BIT)    then table.insert(buttons_array, "Y")    end
-    if is_bit_set(buttons_value, X_BUTTON_BIT)    then table.insert(buttons_array, "X")    end
-    if is_bit_set(buttons_value, B_BUTTON_BIT)    then table.insert(buttons_array, "B")    end
-    if is_bit_set(buttons_value, A_BUTTON_BIT)    then table.insert(buttons_array, "A")    end
-    if is_bit_set(buttons_value, RIGHT_SR_BUTTON_BIT)    then table.insert(buttons_array, "right SR")    end
-    if is_bit_set(buttons_value, RIGHT_SL_BUTTON_BIT)    then table.insert(buttons_array, "right SL")    end
-    if is_bit_set(buttons_value, R_BUTTON_BIT)    then table.insert(buttons_array, "R")    end
-    if is_bit_set(buttons_value, ZR_BUTTON_BIT)    then table.insert(buttons_array, "ZR")    end
-    if is_bit_set(buttons_value, MINUS_BUTTON_BIT)    then table.insert(buttons_array, "minus")    end
-    if is_bit_set(buttons_value, PLUS_BUTTON_BIT)    then table.insert(buttons_array, "plus")    end
-    if is_bit_set(buttons_value, STICK_R_BUTTON_BIT)    then table.insert(buttons_array, "stick R")    end
-    if is_bit_set(buttons_value, STICK_L_BUTTON_BIT)    then table.insert(buttons_array, "stick L")    end
-    if is_bit_set(buttons_value, HOME_BUTTON_BIT)    then table.insert(buttons_array, "home")    end
-    if is_bit_set(buttons_value, CAPTURE_BUTTON_BIT)    then table.insert(buttons_array, "capture")    end
-    if is_bit_set(buttons_value, C_BUTTON_BIT)    then table.insert(buttons_array, "C")    end
-    if is_bit_set(buttons_value, GR_BUTTON_BIT)    then table.insert(buttons_array, "GR")    end
-    if is_bit_set(buttons_value, GL_BUTTON_BIT)    then table.insert(buttons_array, "GL")    end
+    if is_bit_set(buttons_value, DOWN_BUTTON_BIT) then     table.insert(buttons_array, "down") end
+    if is_bit_set(buttons_value, UP_BUTTON_BIT) then       table.insert(buttons_array, "up") end
+    if is_bit_set(buttons_value, RIGHT_BUTTON_BIT) then    table.insert(buttons_array, "right") end
+    if is_bit_set(buttons_value, LEFT_BUTTON_BIT) then     table.insert(buttons_array, "left") end
+    if is_bit_set(buttons_value, LEFT_SR_BUTTON_BIT) then  table.insert(buttons_array, "left SR") end
+    if is_bit_set(buttons_value, LEFT_SL_BUTTON_BIT) then  table.insert(buttons_array, "left SL") end
+    if is_bit_set(buttons_value, L_BUTTON_BIT) then        table.insert(buttons_array, "L") end
+    if is_bit_set(buttons_value, ZL_BUTTON_BIT) then       table.insert(buttons_array, "ZL") end
+    if is_bit_set(buttons_value, Y_BUTTON_BIT) then        table.insert(buttons_array, "Y") end
+    if is_bit_set(buttons_value, X_BUTTON_BIT) then        table.insert(buttons_array, "X") end
+    if is_bit_set(buttons_value, B_BUTTON_BIT) then        table.insert(buttons_array, "B") end
+    if is_bit_set(buttons_value, A_BUTTON_BIT) then        table.insert(buttons_array, "A") end
+    if is_bit_set(buttons_value, RIGHT_SR_BUTTON_BIT) then table.insert(buttons_array, "right SR") end
+    if is_bit_set(buttons_value, RIGHT_SL_BUTTON_BIT) then table.insert(buttons_array, "right SL") end
+    if is_bit_set(buttons_value, R_BUTTON_BIT) then        table.insert(buttons_array, "R") end
+    if is_bit_set(buttons_value, ZR_BUTTON_BIT) then       table.insert(buttons_array, "ZR") end
+    if is_bit_set(buttons_value, MINUS_BUTTON_BIT) then    table.insert(buttons_array, "minus") end
+    if is_bit_set(buttons_value, PLUS_BUTTON_BIT) then     table.insert(buttons_array, "plus") end
+    if is_bit_set(buttons_value, STICK_R_BUTTON_BIT) then  table.insert(buttons_array, "stick R") end
+    if is_bit_set(buttons_value, STICK_L_BUTTON_BIT) then  table.insert(buttons_array, "stick L") end
+    if is_bit_set(buttons_value, HOME_BUTTON_BIT) then     table.insert(buttons_array, "home") end
+    if is_bit_set(buttons_value, CAPTURE_BUTTON_BIT) then  table.insert(buttons_array, "capture") end
+    if is_bit_set(buttons_value, C_BUTTON_BIT) then        table.insert(buttons_array, "C") end
+    if is_bit_set(buttons_value, GR_BUTTON_BIT) then       table.insert(buttons_array, "GR") end
+    if is_bit_set(buttons_value, GL_BUTTON_BIT) then       table.insert(buttons_array, "GL") end
 
     local buttons_text = " (none)"
 
     if #buttons_array ~= 0 then
         buttons_text = " (" .. table.concat(buttons_array, ", ") .. ")"
-    end
+ end
 
     return buttons_text
 end
 
 local function parse_stick(stick_value)
-    local raw_axis_x = stick_value:get_index(0) + bit.lshift(bit.band(stick_value:get_index(1),0xF),8)
-    local raw_axis_y = bit.lshift(stick_value:get_index(2),4) + bit.rshift(stick_value:get_index(1),4)
+    local raw_axis_x = stick_value:get_index(0) + bit.lshift(bit.band(stick_value:get_index(1), 0xF), 8)
+    local raw_axis_y = bit.lshift(stick_value:get_index(2), 4) + bit.rshift(stick_value:get_index(1), 4)
 
     return " (" .. raw_axis_x .. ", " .. raw_axis_y .. ")"
 end
 
 local function parse_imu_sample(sample_value)
-    return sample_value:get_index(0) + bit.lshift(bit.band(sample_value:get_index(1),0xF),8)
+    return sample_value:get_index(0) + bit.lshift(bit.band(sample_value:get_index(1), 0xF), 8)
 end
 
 local function parse_motion(buffer, tree)
-    local imu_sample_value = buffer(0,2)
+    local imu_sample_value = buffer(0, 2)
     local imu_sample_text = parse_imu_sample(imu_sample_value:bytes())
     
     tree:add_le(imuSample, imu_sample_value):append_text(" ("..imu_sample_text..")")
@@ -115,16 +115,16 @@ local function parse_motion(buffer, tree)
 end
 
 local function parse_input_report(buffer, pinfo, tree)
-    local packet_id_value =      buffer(1,1)
-    local status_value =         buffer(2,1)
-    local buttons_value =        buffer(3,3)
-    local stick_l_value =        buffer(6,3)
-    local stick_r_value =        buffer(9,3)
-    local vibration_code_value = buffer(12,1)
-    local analog_l_value =       buffer(13,1)
-    local analog_r_value =       buffer(14,1)
-    local imu_length_value =     buffer(15,1)
-    local motion_buffer =        buffer(16,imu_length_value:le_uint())
+    local packet_id_value =      buffer(1, 1)
+    local status_value =         buffer(2, 1)
+    local buttons_value =        buffer(3, 3)
+    local stick_l_value =        buffer(6, 3)
+    local stick_r_value =        buffer(9, 3)
+    local vibration_code_value = buffer(12, 1)
+    local analog_l_value =       buffer(13, 1)
+    local analog_r_value =       buffer(14, 1)
+    local imu_length_value =     buffer(15, 1)
+    local motion_buffer =        buffer(16, imu_length_value:le_uint())
     
     local buttons_text = parse_buttons(buttons_value:le_uint())
     local stick_l_text = parse_stick(stick_l_value:bytes())
@@ -146,7 +146,7 @@ local function parse_input_report(buffer, pinfo, tree)
     if imu_length_value:le_uint() > 0 then
         tree:add_le(motion, motion_buffer)
         info = info .. parse_motion(motion_buffer, tree)
-    end
+ end
 
     pinfo.cols.info = info
 end
@@ -158,11 +158,11 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
     pinfo.cols.protocol = switch2hid_protocol.name
 
     local subtree = tree:add(switch2hid_protocol, buffer(), "Switch2 HID Data")
-    local input_type_value = buffer(0,1)
+    local input_type_value = buffer(0, 1)
 
     subtree:add_le(inputType, input_type_value)
 
-    if input_type_value:le_uint() == NullInputReport then pinfo.cols.info = "Empty input report"
+    if     input_type_value:le_uint() == NullInputReport then   pinfo.cols.info = "Empty input report"
     elseif input_type_value:le_uint() == SimpleInputReport then parse_input_report(buffer, pinfo, subtree)
     else pinfo.cols.info = "Unknown input report type " .. input_type_value end
 end
