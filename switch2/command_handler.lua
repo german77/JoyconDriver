@@ -35,7 +35,7 @@ local mcuUnk =        ProtoField.uint8("switch2.mcuUnk",         "McuUnk",      
 local mcuDataOffset = ProtoField.uint8("switch2.mcuDataOffset",  "McuDataOffset", base.HEX)
 local mcuDataLength = ProtoField.uint8("switch2.mcuDataLength",  "McuDataLength", base.HEX)
 local mcuDataType =   ProtoField.uint8("switch2.mcuDataType",    "McuDataType",   base.HEX)
-local mcuData =       ProtoField.bytes("switch2.mcuData",        "McuData",       base.NONE)
+local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",     base.NONE)
 
 -- Hack to read mcu buffer
 local mcuDataBuffer = {}
@@ -43,7 +43,7 @@ local mcuDataBufferSize = 0
 
 switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern,
                            dataLength, dataData, firmwareLength, firmwareData, mcuReadType, mcuBlockCount, mcuReadBlock,
-                           mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType, mcuData,
+                           mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType, mcuBuffer,
                            mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock}
 
 -- Input report mode
@@ -70,24 +70,41 @@ local PidProController2 =   0x2069
 local PidGCController2 =    0x2073
 
 -- SPI addresss, 2MB
-local SpiFirmwareA =            0x000000 -- 0x30000+ bytes
-local SpiSerialNumber =         0x013002 -- 0xe bytes
-local SpiVendorId =             0x013012 -- 2 bytes
-local SpiProductId =            0x013014 -- 2 bytes
-local SpiColorA =               0x013019 -- 3 bytes RGB
-local SpiColorB =               0x01301c -- 3 bytes RGB
-local SpiColorC =               0x01301f -- 3 bytes RGB
-local SpiColorD =               0x013022 -- 3 bytes RGB
+local SpiFirmwareA =            0x000000 -- 0x30000+ bytes, SYS
+local SpiUnknown11000 =         0x011000 -- 4bytes, update version? 0x00500700
+local SpiUnknown12000 =         0x012000 -- 0x2 bytes, Unknown 0xEFBE or 0xFFFF
+local SpiSerialNumber =         0x013002 -- 0xe bytes, HBW, HEJ, HEW
+local SpiVendorId =             0x013012 -- 0x2 bytes
+local SpiProductId =            0x013014 -- 0x2 bytes
+local SpiColorA =               0x013019 -- 0x3 bytes RGB
+local SpiColorB =               0x01301c -- 0x3 bytes RGB
+local SpiColorC =               0x01301f -- 0x3 bytes RGB
+local SpiColorD =               0x013022 -- 0x3 bytes RGB
 local SpiUnknown13040 =         0x013040 -- 0x10 bytes
 local SpiUnknown13060 =         0x013060 -- 0x20 bytes
 local SpiCalibrationA =         0x013080 -- 0x40 bytes
 local SpiCalibrationB =         0x0130C0 -- 0x40 bytes
 local SpiUnknown13100 =         0x013100 -- 0x18 bytes
-local SpiFirmwareB =            0x015000 -- 0x30000+ bytes
-local SpiConsoleMac =           0x1fa008 -- 6 bytes
+local SpiUnknown13140 =         0x013140 -- 0x9 bytes
+local SpiUnknown13e00 =         0x013e00 -- 0x20 bytes, serial like number
+local SpiUnknown13e20 =         0x013e20 -- 0x4 bytes
+local SpiUnknown13e30 =         0x013e30 -- 0xa bytes
+local SpiUnknown13e60 =         0x013e60 -- 0x2 bytes
+local SpiUnknown13e80 =         0x013e80 -- 0x9 bytes
+local SpiUnknown13efb =         0x013efb -- 0x4 bytes
+local SpiFirmwareB =            0x015000 -- 0x30000+ bytes, SYS
+local SpiFirmwareC =            0x075000 -- 0x30000+ bytes, SYS
+local SpiFirmwareD =            0x175000 -- 0x30000+ bytes, DSPH MT3616A0DSP
+local SpiPairingInfo =          0x1fa000 -- 0x58 bytes
+local SpiConsoleMac =           0x1fa008 -- 0x6 bytes
+local SpiUnknown1fe000 =        0x1fe000 -- 0x100 bytes
 local SpiCalibrationMotion =    0x1fc000 -- 0x40 bytes, 0xFF...FF. no calibration
 local SpiCalibrationJoystickL = 0x1fc040 -- 0xb bytes, 0xFF...FF. no calibration
 local SpiCalibrationJoystickR = 0x1fc060 -- 0xb bytes, 0xFF...FF no calibration
+local SpiShipmentFlagA =        0x1fd000 -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
+local SpiShipmentFlagB =        0x1fd010 -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
+local SpiUnknown1ff000 =        0x1ff000 -- 0x58 bytes
+local SpiUnknown1ff400 =        0x1ff400 -- 0x490 bytes
 
 -- SPI magic values
 local SpiCalibrationMagic = 0xb2a1 -- If present user calibration data is set
@@ -110,9 +127,27 @@ local DataReport =         0x15 -- Unknown data transfers
 local Report16 =           0x16 -- Unknown
 local Report18 =           0x18 -- Unknown
 
+-- MCU commands
+local McuCommand02 =   0x02 -- Unknown
+local McuCommand03 =   0x03 -- Unknown
+local McuCommand04 =   0x04 -- Unknown
+local McuState =       0x05 -- Return the current state of the MCU device
+local McuReadDevice =  0x06 -- Send read properties
+local McuWireDevice =  0x08 -- Send write properties
+local McuCommand0c =   0x0c -- Unknown
+local McuReadBuffer =  0x14 -- Read MCU buffer
+local McuWriteBuffer = 0x15 -- Write MCU buffer
+
 -- IMU commands
-local ImuDisable =           0x18 -- Unknown
-local ImuEnable =           0x18 -- Unknown
+local ImuDisable = 0x02 -- Unknown, no motion output after this command
+local ImuEnable =  0x04 -- Unknown, motion output after this command
+
+-- SPI commands
+local SpiRead = 0x04 -- Read up to 0x40 bytes?
+local SpiWrite = 0x05 -- Write up to 0x40 bytes?
+
+-- Player lights commands
+local PlayerLightsSetLedPattern = 0x07 -- Set Led pattern
 
 -- Firmware commands
 local FirmwareCommand01 =  0x01 -- Unknown. Init?
@@ -143,6 +178,8 @@ local function parse_spi_address(address)
     if address == SpiCalibrationMotion then return " (User Motion calibration)" end
     if address == SpiCalibrationJoystickL then return " (User Joystick L calibration)" end
     if address == SpiCalibrationJoystickR then return " (User Joystick R calibration)" end
+    if address == SpiShipmentFlagA then return " (SpiShipmentFlagA)" end
+    if address == SpiShipmentFlagB then return " (SpiShipmentFlagB)" end
     return " (Unknown)"
 end
 
@@ -157,11 +194,11 @@ local function parse_mcu_tag_type(tag_type)
 end
 
 local function parse_mcu_state(buffer, pinfo, tree)
-    local data_value = buffer(5, 3)
+    local buffer_value = buffer(5, 3)
 
-    tree:add_le(mcuData, data_value)
+    tree:add_le(mcuBuffer, buffer_value)
 
-    pinfo.cols.info = "Request MCU state: ->" .. cmn.getBytes(data_value)
+    pinfo.cols.info = "Request MCU state: ->" .. cmn.getBytes(buffer_value)
     return " (MCU state)"
 end
 
@@ -258,23 +295,23 @@ local function parse_mcu_write_buffer(buffer, pinfo, tree)
     local mcu_unknown_value = buffer(5, 1)
     local data_offset_value = buffer(8, 2)
     local data_length_value = buffer(10, 1)
-    local data_value = buffer(12, data_length_value:le_uint())
+    local buffer_value =      buffer(12, data_length_value:le_uint())
 
     tree:add_le(mcuUnk, mcu_unknown_value)
     tree:add_le(mcuDataOffset, data_offset_value)
     tree:add_le(mcuDataLength, data_length_value)
-    tree:add_le(mcuData, data_value)
+    tree:add_le(mcuBuffer, buffer_value)
 
     local offset=data_offset_value:le_uint() + 0
     for i=0,data_length_value:le_uint() - 1 do
-        mcuDataBuffer[i+offset] = data_value:bytes():get_index(i)
+        mcuDataBuffer[i+offset] = buffer_value:bytes():get_index(i)
     end
 
     if mcuDataBufferSize < data_offset_value:le_uint() + data_length_value:le_uint() then
         mcuDataBufferSize = data_offset_value:le_uint() + data_length_value:le_uint()
     end
 
-    pinfo.cols.info = "Request MCU write buffer: offset 0x".. cmn.hex(data_offset_value:le_uint()).. " ->" .. cmn.getBytes(data_value)
+    pinfo.cols.info = "Request MCU write buffer: offset 0x".. cmn.hex(data_offset_value:le_uint()).. " ->" .. cmn.getBytes(buffer_value)
     return " (MCU write buffer)"
 end
 
@@ -283,15 +320,14 @@ local function parse_mcu_read_buffer(buffer, pinfo, tree)
     return " (MCU read buffer)"
 end
 
-
 local function parse_mcu_command(buffer, pinfo, tree, command_value)
     local command_text = " (MCU unknown)"
 
-    if command_value:le_uint() == 0x05 then command_text = parse_mcu_state(buffer, pinfo, tree)
-    elseif command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device(buffer, pinfo, tree)
-    elseif command_value:le_uint() == 0x08 then command_text = parse_mcu_write_device(buffer, pinfo, tree)
-    elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_buffer(buffer, pinfo, tree)
-    elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_buffer(buffer, pinfo, tree)
+    if     command_value:le_uint() == McuState then       command_text = parse_mcu_state(buffer, pinfo, tree)
+    elseif command_value:le_uint() == McuReadDevice then  command_text = parse_mcu_read_device(buffer, pinfo, tree)
+    elseif command_value:le_uint() == McuWireDevice then  command_text = parse_mcu_write_device(buffer, pinfo, tree)
+    elseif command_value:le_uint() == McuReadBuffer then  command_text = parse_mcu_write_buffer(buffer, pinfo, tree)
+    elseif command_value:le_uint() == McuWriteBuffer then command_text = parse_mcu_read_buffer(buffer, pinfo, tree)
     else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. cmn.getBytes(buffer(5,buffer:len()-5)) end
 
     tree:add_le(command, command_value):append_text(command_text)
@@ -300,16 +336,16 @@ local function parse_mcu_command(buffer, pinfo, tree, command_value)
 end
 
 local function parse_spi_command(buffer, pinfo, tree, command_value)
-    local length_value = buffer(8, 1)
+    local length_value =      buffer(8, 1)
     local sub_command_value = buffer(9, 1)
-    local address_value = buffer(0xc, 4)
+    local address_value =     buffer(0xc, 4)
     local address_text = parse_spi_address(address_value:le_uint())
     local command_text = " (Unknown)"
     
-    if command_value:le_uint() == 0x4 then
+    if command_value:le_uint() == SpiRead then
         command_text = " (SPI read)"
         pinfo.cols.info = "Request SPI read: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value
-    elseif command_value:le_uint() == 0x5 then
+    elseif command_value:le_uint() == SpiWrite then
         command_text = " (SPI write)"
         pinfo.cols.info = "Request SPI write: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value .. cmn.getBytes(buffer(0x10,length_value:le_uint()))
         tree:add_le(spiData, buffer(0x10,length_value:le_uint()))
@@ -327,7 +363,7 @@ local function parse_player_lights_command(buffer, pinfo, tree, command_value)
     local command_text = " (Player lights unknown)"
     local led_pattern_value = buffer(8, 1)
 
-    if command_value:le_uint() == 0x07 then
+    if command_value:le_uint() == PlayerLightsSetLedPattern then
         pinfo.cols.info = "Request Player lights: set led pattern 0x" .. cmn.hex(led_pattern_value:le_uint())
         command_text = " (Player lights set pattern)"
     else
@@ -343,10 +379,10 @@ end
 local function parse_imu_command(buffer, pinfo, tree, command_value)
     local command_text = " (IMU unknown)"
 
-    if command_value:le_uint() == 0x02 then
+    if command_value:le_uint() == ImuDisable then
         pinfo.cols.info = "Request IMU: Disable motion"
         command_text = " (IMU disable motion)"
-    elseif command_value:le_uint() == 0x04 then
+    elseif command_value:le_uint() == ImuEnable then
         pinfo.cols.info = "Request IMU: Enable motion"
         command_text = " (IMU enable motion)"
     else
@@ -381,7 +417,7 @@ end
 local function parse_firmware_command(buffer, pinfo, tree, command_value)
     local command_text = " (Firmware unknown)"
 
-    if command_value:le_uint() == 0x03 then command_text = parse_firmware_properties(buffer, pinfo, tree)
+    if     command_value:le_uint() == 0x03 then command_text = parse_firmware_properties(buffer, pinfo, tree)
     elseif command_value:le_uint() == 0x04 then command_text = parse_firmware_data(buffer, pinfo, tree)
     else pinfo.cols.info = "Request Firmware(0x"..command_value..") ->".. cmn.getBytes(buffer(5,buffer:len()-5)) end
 
@@ -523,14 +559,14 @@ local function parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
     local data_type_value = buffer(8, 1)
     local data_type_text = " (Unknown)"
     local data_length_value = buffer(9, 2)
-    local data_value = buffer(0x0b, data_length_value:le_uint())
-    local mcu_buffer = data_value:bytes():tvb("MCU buffer")
+    local buffer_value = buffer(0x0b, data_length_value:le_uint())
+    local mcu_buffer = buffer_value:bytes():tvb("MCU buffer")
 
     if data_type_value:le_uint() == 0x01 then data_type_text = parse_mcu_nfc_data(mcu_buffer, pinfo, tree, result_value)
-    else pinfo.cols.info = "Reply   MCU read buffer:" .. result_text .. " ->" .. cmn.getBytes(data_value) end
+    else pinfo.cols.info = "Reply   MCU read buffer:" .. result_text .. " ->" .. cmn.getBytes(buffer_value) end
 
     tree:add_le(mcuDataLength, data_length_value)
-    tree:add_le(mcuData, data_value)
+    tree:add_le(mcuBuffer, buffer_value)
     tree:add_le(mcuDataType, data_type_value):append_text(data_type_text)
 
     return " (MCU read buffer)"
@@ -540,11 +576,11 @@ local function parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (MCU unknown)"
     local result_text = parse_result(result_value:le_uint())
 
-    if command_value:le_uint() == 0x05 then command_text = parse_mcu_state_reply(buffer, pinfo, tree, result_value)
-    elseif command_value:le_uint() == 0x06 then command_text = parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
-    elseif command_value:le_uint() == 0x08 then command_text = parse_mcu_write_device_reply(buffer, pinfo, tree, result_value)
-    elseif command_value:le_uint() == 0x14 then command_text = parse_mcu_write_buffer_reply(buffer, pinfo, tree, result_value)
-    elseif command_value:le_uint() == 0x15 then command_text = parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
+    if command_value:le_uint() == McuState then command_text = parse_mcu_state_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == McuReadDevice then command_text = parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == McuWireDevice then command_text = parse_mcu_write_device_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == McuReadBuffer then command_text = parse_mcu_write_buffer_reply(buffer, pinfo, tree, result_value)
+    elseif command_value:le_uint() == McuWriteBuffer then command_text = parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
     else pinfo.cols.info = "Reply   MCU(0x"..command_value.."):" .. result_text.. " ->" .. cmn.getBytes(buffer(8,buffer:len()-8)) end
 
     tree:add_le(command, command_value):append_text(command_text)
@@ -574,7 +610,7 @@ local function parse_player_lights_reply(buffer, pinfo, tree, command_value, res
 
     pinfo.cols.info = "Reply   Player lights:" .. result_text
 
-    if command_value:le_uint() == 0x07 then command_text = " (Player lights set pattern)" end
+    if command_value:le_uint() == PlayerLightsSetLedPattern then command_text = " (Player lights set pattern)" end
 
     tree:add_le(command, command_value):append_text(command_text)
 
@@ -588,7 +624,7 @@ local function parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
     pinfo.cols.info = "Reply   IMU:" .. result_text
 
     if     command_value:le_uint() == ImuDisable then command_text = " (IMU disable motion)"
-    elseif command_value:le_uint() == ImuEnable then command_text = " (IMU enable motion)" end
+    elseif command_value:le_uint() == ImuEnable then  command_text = " (IMU enable motion)" end
 
     tree:add_le(command, command_value):append_text(command_text)
 
