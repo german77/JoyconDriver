@@ -95,11 +95,30 @@ local function parse_buttons(buttons_value)
     return buttons_text
 end
 
-local function parse_stick(stick_value)
+local function parse_raw_axis(raw_value, center_value, max_value, min_value)
+    local value = raw_value - center_value
+    if value > 0.0 then return value * 1.0 / max_value end
+    return value * 1.0 / min_value
+end
+
+local function parse_left_stick(stick_value)
     local raw_axis_x = stick_value:get_index(0) + bit.lshift(bit.band(stick_value:get_index(1), 0xF), 8)
     local raw_axis_y = bit.lshift(stick_value:get_index(2), 4) + bit.rshift(stick_value:get_index(1), 4)
 
-    return " (" .. raw_axis_x .. ", " .. raw_axis_y .. ")"
+    -- TODO: Use constants
+    local axis_x = parse_raw_axis(raw_axis_x,1968,1626,1695)
+    local axis_y = parse_raw_axis(raw_axis_y,2194,1534,1527)
+    return string.format(" (%.2f, %.2f)",axis_x, axis_y)
+end
+
+local function parse_right_stick(stick_value)
+    local raw_axis_x = stick_value:get_index(0) + bit.lshift(bit.band(stick_value:get_index(1), 0xF), 8)
+    local raw_axis_y = bit.lshift(stick_value:get_index(2), 4) + bit.rshift(stick_value:get_index(1), 4)
+
+    -- TODO: Use constants
+    local axis_x = parse_raw_axis(raw_axis_x,2253,1457,1612)
+    local axis_y = parse_raw_axis(raw_axis_y,2104,1574,1629)
+    return string.format(" (%.2f, %.2f)",axis_x, axis_y)
 end
 
 local function parse_imu_sample(sample_value)
@@ -127,8 +146,8 @@ local function parse_input_report(buffer, pinfo, tree)
     local motion_buffer =        buffer(16, imu_length_value:le_uint())
     
     local buttons_text = parse_buttons(buttons_value:le_uint())
-    local stick_l_text = parse_stick(stick_l_value:bytes())
-    local stick_r_text = parse_stick(stick_r_value:bytes())
+    local stick_l_text = parse_left_stick(stick_l_value:bytes())
+    local stick_r_text = parse_right_stick(stick_r_value:bytes())
 
     tree:add_le(packetId, packet_id_value)
     tree:add_le(status, status_value)

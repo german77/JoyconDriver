@@ -11,6 +11,10 @@ local spiLength =  ProtoField.uint8("switch2.spiLength",  "SpiLength",  base.DEC
 local spiCommand = ProtoField.uint8("switch2.spiCommand", "SpiCommand", base.HEX)
 local spiAddress = ProtoField.uint8("switch2.spiAddress", "SpiAddress", base.HEX)
 local spiData =    ProtoField.bytes("switch2.spiData",    "SpiData",    base.NONE)
+local spiMagic =   ProtoField.uint16("switch2.spiMagic",  "SpiMagic",   base.HEX)
+local spiMax =   ProtoField.uint16("switch2.spiMax",  "SpiMax",   base.HEX)
+local spiCenter =   ProtoField.uint16("switch2.spiCenter",  "spiCenter",   base.HEX)
+local spiMin =   ProtoField.uint16("switch2.spiMin",  "spiMin",   base.HEX)
 -- led
 local ledPattern = ProtoField.uint8("switch2.ledPattern", "LedPattern", base.HEX)
 -- data
@@ -41,10 +45,11 @@ local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",   
 local mcuDataBuffer = {}
 local mcuDataBufferSize = 0
 
-switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, ledPattern,
-                           dataLength, dataData, firmwareLength, firmwareData, mcuReadType, mcuBlockCount, mcuReadBlock,
-                           mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType, mcuBuffer,
-                           mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock}
+switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, spiMagic,
+                           ledPattern, dataLength, dataData, firmwareLength, firmwareData, mcuReadType, mcuBlockCount,
+                           mcuReadBlock, mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType,
+                           mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock,
+                           spiMax,spiCenter,spiMin}
 
 -- Input report mode
 local Reply =   0x01 -- Reply from controller
@@ -96,7 +101,11 @@ local SpiFirmwareB =            0x015000 -- 0x30000+ bytes, SYS
 local SpiFirmwareC =            0x075000 -- 0x30000+ bytes, SYS
 local SpiFirmwareD =            0x175000 -- 0x30000+ bytes, DSPH MT3616A0DSP
 local SpiPairingInfo =          0x1fa000 -- 0x58 bytes
-local SpiConsoleMac =           0x1fa008 -- 0x6 bytes
+local SpiPairingEntries =       0x1fa000 -- 0x1 bytes. Each entry is 0x1c bytes
+local SpiConsoleMacA =          0x1fa008 -- 0x6 bytes
+local SpiLtkA =                 0x1fa01a -- 0x10 bytes
+local SpiConsoleMacB =          0x1fa030 -- 0x6 bytes
+local SpiLtkB =                 0x1fa042 -- 0x10 bytes
 local SpiUnknown1fe000 =        0x1fe000 -- 0x100 bytes
 local SpiCalibrationMotion =    0x1fc000 -- 0x40 bytes, 0xFF...FF. no calibration
 local SpiCalibrationJoystickL = 0x1fc040 -- 0xb bytes, 0xFF...FF. no calibration
@@ -174,7 +183,11 @@ local function parse_spi_address(address)
     if address == SpiCalibrationA then return " (Calibration A)" end
     if address == SpiCalibrationB then return " (Calibration B)" end
     if address == SpiFirmwareB then return " (Firmware B)" end
-    if address == SpiConsoleMac then return " (Console MAC)" end
+    if address == SpiPairingInfo then return " (Pairing Info)" end
+    if address == SpiConsoleMacA then return " (Console MAC A)" end
+    if address == SpiConsoleMacB then return " (Console MAC B)" end
+    if address == SpiLtkA then return " (LTK A)" end
+    if address == SpiLtkB then return " (LTK B)" end
     if address == SpiCalibrationMotion then return " (User Motion calibration)" end
     if address == SpiCalibrationJoystickL then return " (User Joystick L calibration)" end
     if address == SpiCalibrationJoystickR then return " (User Joystick R calibration)" end
@@ -335,13 +348,20 @@ local function parse_mcu_command(buffer, pinfo, tree, command_value)
     return " (MCU)"
 end
 
+local function parse_stick(stick_value)
+    local raw_axis_x = stick_value:get_index(0) + bit.lshift(bit.band(stick_value:get_index(1), 0xF), 8)
+    local raw_axis_y = bit.lshift(stick_value:get_index(2), 4) + bit.rshift(stick_value:get_index(1), 4)
+
+    return " (" .. raw_axis_x .. ", " .. raw_axis_y .. ")"
+end
+
 local function parse_spi_command(buffer, pinfo, tree, command_value)
     local length_value =      buffer(8, 1)
     local sub_command_value = buffer(9, 1)
     local address_value =     buffer(0xc, 4)
     local address_text = parse_spi_address(address_value:le_uint())
     local command_text = " (Unknown)"
-    
+    -- TODO: Fix SPI parsing
     if command_value:le_uint() == SpiRead then
         command_text = " (SPI read)"
         pinfo.cols.info = "Request SPI read: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value
@@ -349,8 +369,12 @@ local function parse_spi_command(buffer, pinfo, tree, command_value)
         command_text = " (SPI write)"
         pinfo.cols.info = "Request SPI write: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value .. cmn.getBytes(buffer(0x10,length_value:le_uint()))
         tree:add_le(spiData, buffer(0x10,length_value:le_uint()))
+        tree:add_le(spiMagic, buffer(0x10,2))
+        tree:add_le(spiCenter, buffer(0x12,3)):append_text(parse_stick(buffer(0x12,3):bytes()))
+        tree:add_le(spiMax, buffer(0x15,3)):append_text(parse_stick(buffer(0x15,3):bytes()))
+        tree:add_le(spiMin, buffer(0x18,3)):append_text(parse_stick(buffer(0x18,3):bytes()))
     else pinfo.cols.info = "Request SPI 0x" .. sub_command_value .. ": address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value end
-    
+
     tree:add_le(spiLength, length_value)
     tree:add_le(spiCommand, sub_command_value)
     tree:add_le(spiAddress, address_value):append_text(address_text)
