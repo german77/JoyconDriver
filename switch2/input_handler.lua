@@ -1,6 +1,7 @@
 cmn = require "common"
 
 switch2hid_protocol = Proto("sw2_hid",  "Nintendo Switch 2 HID")
+switch2hidble_protocol = Proto("sw2_hid_ble",  "Nintendo Switch 2 HID BLE")
 
 local inputType =          ProtoField.uint8("sw2_hid.inputType",          "InputType",          base.HEX)
 local packetId =           ProtoField.uint8("sw2_hid.packetId",           "PacketId",           base.HEX)
@@ -216,12 +217,6 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
     local subtree = tree:add(switch2hid_protocol, buffer(), "Switch2 HID Data")
     local input_type_value = buffer(0, 1)
 
-    -- Temp workaround for bluetooth packets
-    if length == 63 then
-        parse_wireless_input_report(buffer, pinfo, subtree)
-        return
-    end
-
     subtree:add_le(inputType, input_type_value)
 
     if     input_type_value:le_uint() == NullInputReport then     pinfo.cols.info = "Empty input report"
@@ -229,5 +224,16 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
     else pinfo.cols.info = "Unknown input report type " .. input_type_value end
 end
 
+function switch2hidble_protocol.dissector(buffer, pinfo, tree)
+    length = buffer:len()
+    if length == 0 then return end
+
+    pinfo.cols.protocol = switch2hid_protocol.name
+
+    local subtree = tree:add(switch2hid_protocol, buffer(), "Switch2 HID BLE Data")
+
+    parse_wireless_input_report(buffer, pinfo, subtree)
+end
+
 DissectorTable.get("usb.interrupt"):add(0x03, switch2hid_protocol)
-DissectorTable.get("btatt.handle"):add(0x000e, switch2hid_protocol)
+DissectorTable.get("btatt.handle"):add(0x000e, switch2hidble_protocol) -- BLE Simple input report

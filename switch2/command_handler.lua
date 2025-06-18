@@ -1,25 +1,31 @@
 cmn = require "common"
 
 switch2_protocol = Proto("switch2", "Nintendo Switch 2 controller Protocol")
+switch2ble_protocol = Proto("switch2_ble", "Nintendo Switch 2 controller Protocol BLE")
 
 local reportType = ProtoField.uint8("switch2.reportType", "ReportType", base.HEX)
 local reportMode = ProtoField.uint8("switch2.reportMode", "ReportMode", base.HEX)
 local command =    ProtoField.uint8("switch2.command",    "Command",    base.HEX)
 local result =     ProtoField.uint8("switch2.result",     "Result",     base.HEX)
+-- rumble
+local rumblePacketId = ProtoField.uint8("switch2.rumblePacketId", "RumblePacketId", base.HEX)
+local rumbleEnabled =  ProtoField.bool("switch2.rumbleEnabled",   "rumbleEnabled")
 -- spi
 local spiLength =  ProtoField.uint8("switch2.spiLength",  "SpiLength",  base.DEC)
 local spiCommand = ProtoField.uint8("switch2.spiCommand", "SpiCommand", base.HEX)
 local spiAddress = ProtoField.uint8("switch2.spiAddress", "SpiAddress", base.HEX)
 local spiData =    ProtoField.bytes("switch2.spiData",    "SpiData",    base.NONE)
 local spiMagic =   ProtoField.uint16("switch2.spiMagic",  "SpiMagic",   base.HEX)
-local spiMax =   ProtoField.uint16("switch2.spiMax",  "SpiMax",   base.HEX)
-local spiCenter =   ProtoField.uint16("switch2.spiCenter",  "spiCenter",   base.HEX)
-local spiMin =   ProtoField.uint16("switch2.spiMin",  "spiMin",   base.HEX)
+local spiMax =     ProtoField.uint16("switch2.spiMax",    "SpiMax",     base.HEX)
+local spiCenter =  ProtoField.uint16("switch2.spiCenter", "SpiCenter",  base.HEX)
+local spiMin =     ProtoField.uint16("switch2.spiMin",    "SpiMin",     base.HEX)
 -- led
 local ledPattern = ProtoField.uint8("switch2.ledPattern", "LedPattern", base.HEX)
--- data
-local dataLength = ProtoField.uint8("switch2.dataLength", "DataLength", base.DEC)
-local dataData =   ProtoField.bytes("switch2.dataData",   "DataData",   base.NONE)
+-- pairing
+local pairingLength =  ProtoField.uint8("switch2.pairingLength",  "PairingLength",  base.DEC)
+local pairingBuffer =  ProtoField.bytes("switch2.pairingBuffer",  "PairingBuffer",  base.NONE)
+local pairingEntries = ProtoField.uint8("switch2.pairingEntries", "PairingEntries", base.DEC)
+local pairingAddress = ProtoField.bytes("switch2.pairingAddress", "PairingAddress", base.NONE)
 -- firmware
 local firmwareLength = ProtoField.uint8("switch2.firmwareLength", "FirmwareLength", base.DEC)
 local firmwareData =   ProtoField.bytes("switch2.firmwareData",   "FirmwareData",   base.NONE)
@@ -46,10 +52,10 @@ local mcuDataBuffer = {}
 local mcuDataBufferSize = 0
 
 switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, spiMagic,
-                           ledPattern, dataLength, dataData, firmwareLength, firmwareData, mcuReadType, mcuBlockCount,
+                           ledPattern, pairingLength, pairingBuffer, firmwareLength, firmwareData, mcuReadType, mcuBlockCount,
                            mcuReadBlock, mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType,
                            mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock,
-                           spiMax,spiCenter,spiMin}
+                           spiMax,spiCenter,spiMin,rumblePacketId,rumbleEnabled, pairingEntries ,pairingAddress}
 
 -- Input report mode
 local Reply =   0x01 -- Reply from controller
@@ -78,6 +84,7 @@ local PidGCController2 =    0x2073
 local SpiFirmwareA =            0x000000 -- 0x30000+ bytes, SYS
 local SpiUnknown11000 =         0x011000 -- 4bytes, update version? 0x00500700
 local SpiUnknown12000 =         0x012000 -- 0x2 bytes, Unknown 0xEFBE or 0xFFFF
+local SpiDeviceInfo =           0x013000 -- 0x40 bytes
 local SpiSerialNumber =         0x013002 -- 0xe bytes, HBW, HEJ, HEW
 local SpiVendorId =             0x013012 -- 0x2 bytes
 local SpiProductId =            0x013014 -- 0x2 bytes
@@ -119,7 +126,8 @@ local SpiUnknown1ff400 =        0x1ff400 -- 0x490 bytes
 local SpiCalibrationMagic = 0xb2a1 -- If present user calibration data is set
 
 -- Result codes
-local ResultACK = 0xf8
+local ResultAck = 0xf8
+local ResultAckBle = 0x78
 
 -- Command report types
 local McuReport =          0x01 -- MCU commands. NFC read/write
@@ -132,7 +140,7 @@ local ImuReport =          0x0c -- IMU commands. Enable/Disable
 local FirmwareReport =     0x0d -- Firmware update commands
 local Report10 =           0x10 -- Unknown
 local Report11 =           0x11 -- Unknown
-local DataReport =         0x15 -- Unknown data transfers
+local PairingReport =      0x15 -- Paring data transfers
 local Report16 =           0x16 -- Unknown
 local Report18 =           0x18 -- Unknown
 
@@ -166,13 +174,21 @@ local FirmwareData =       0x04 -- Sends the firmware data in 0x4c chunks
 local FirmwareCommand04 =  0x05 -- Unknown
 local FirmwareCommand05 =  0x06 -- Unknown. Finalize?
 
+-- Pairing commands
+local PairingSetAddress = 0x01
+local PairingCommand02 =  0x02
+local PairingCommand03 =  0x03
+local PairingCommand04 =  0x04
+
 local function parse_result(result_value)
-    if result_value == ResultACK then return " (ACK)" end
+    if result_value == ResultAck then return " (ACK)" end
+    if result_value == ResultAckBle then return " (ACK BLE)" end
     return " (Unknown)"
 end
 
 local function parse_spi_address(address)
     if address == SpiFirmwareA then return " (Firmware A)" end
+    if address == SpiDeviceInfo then return " (Device info)" end
     if address == SpiSerialNumber then return " (Serial Number)" end
     if address == SpiVendorId then return " (Vendor ID)" end
     if address == SpiProductId then return " (Product ID)" end
@@ -441,8 +457,8 @@ end
 local function parse_firmware_command(buffer, pinfo, tree, command_value)
     local command_text = " (Firmware unknown)"
 
-    if     command_value:le_uint() == 0x03 then command_text = parse_firmware_properties(buffer, pinfo, tree)
-    elseif command_value:le_uint() == 0x04 then command_text = parse_firmware_data(buffer, pinfo, tree)
+    if     command_value:le_uint() == FirmwareProperties then command_text = parse_firmware_properties(buffer, pinfo, tree)
+    elseif command_value:le_uint() == FirmwareData then       command_text = parse_firmware_data(buffer, pinfo, tree)
     else pinfo.cols.info = "Request Firmware(0x"..command_value..") ->".. cmn.getBytes(buffer(5,buffer:len()-5)) end
 
     tree:add_le(command, command_value):append_text(command_text)
@@ -450,16 +466,37 @@ local function parse_firmware_command(buffer, pinfo, tree, command_value)
     return " (Firmware)"
 end
 
-local function parse_data_command(buffer, pinfo, tree, command_value)
+local function parse_pairing_set_address(buffer, pinfo, tree)
+    local entries_value = buffer(1,1)
+    local address_text = ""
+
+    tree:add_le(pairingEntries, entries_value)
+
+    for i=0,entries_value:le_uint() -1 do
+        local address_value = buffer(2+(i*6),6)
+        address_text = address_text .. cmn.getBytes(address_value)
+        tree:add_le(pairingAddress, address_value)
+    end
+
+    pinfo.cols.info = "Request Pairing set address:"..address_text
+
+    return " (Pairing Set Address)"
+end
+
+local function parse_paring_command(buffer, pinfo, tree, command_value)
     local length_value = buffer(5,1)
-    local data_value = buffer(8,length_value:le_uint())
+    local buffer_value = buffer(8,length_value:le_uint())
+    local pairing_buffer = buffer_value:bytes():tvb("Pairing buffer")
+    local command_text = " (Pairing unknown)"
 
-    tree:add_le(dataLength, length_value)
-    tree:add_le(dataData, data_value)
-    tree:add_le(command, command_value):append_text(" (Data unknown)")
+    if command_value:le_uint() == PairingSetAddress then command_text = parse_pairing_set_address(pairing_buffer, pinfo, tree)
+    else pinfo.cols.info = "Request Pairing(" .. command_value .. "): size 0x" .. length_value .. " ->" .. cmn.getBytes(buffer_value) end
 
-    pinfo.cols.info = "Request data(" .. command_value .. "): size 0x" .. length_value .. " ->" .. cmn.getBytes(data_value)
-    return " (Data)"
+    tree:add_le(pairingLength, length_value)
+    tree:add_le(pairingBuffer, buffer_value)
+    tree:add_le(command, command_value):append_text(command_text)
+
+    return " (Pairing)"
 end
 
 local function parse_request(buffer, pinfo, tree)
@@ -472,7 +509,7 @@ local function parse_request(buffer, pinfo, tree)
     elseif report_type_value == PlayerLightsReport then report_type_text = parse_player_lights_command(buffer, pinfo, tree, command_value)
     elseif report_type_value == ImuReport then report_type_text = parse_imu_command(buffer, pinfo, tree, command_value)
     elseif report_type_value == FirmwareReport then report_type_text = parse_firmware_command(buffer, pinfo, tree, command_value)
-    elseif report_type_value == DataReport then report_type_text = parse_data_command(buffer, pinfo, tree, command_value)
+    elseif report_type_value == PairingReport then report_type_text = parse_paring_command(buffer, pinfo, tree, command_value)
     else
         tree:add_le(command, command_value):append_text(" (0x" .. cmn.hex(report_type_value) .. " unknown)")
         pinfo.cols.info = "Request (0x" .. cmn.hex(report_type_value) .. ", 0x" .. command_value .. ") ->".. cmn.getBytes(buffer(5,buffer:len()-5))
@@ -621,11 +658,19 @@ local function parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
 
     tree:add_le(spiLength, length_value)
     tree:add_le(spiAddress, address_value):append_text(address_text)
-    tree:add_le(spiData, data_value)
+
+    if command_value:le_uint() == SpiRead then
+        command_text = " (SPI Read)"
+        tree:add_le(spiData, data_value)
+        pinfo.cols.info = "Reply   SPI read: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x" .. length_value .. " ->" .. cmn.getBytes(data_value)
+    elseif command_value:le_uint() == SpiWrite then
+        command_text = " (SPI Write)"
+        pinfo.cols.info = "Reply   SPI write: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x" .. length_value
+    end
+
     tree:add_le(command, command_value):append_text(command_text)
 
-    pinfo.cols.info = "Reply   SPI: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x" .. length_value .. " ->" .. cmn.getBytes(data_value)
-    return " (SPI)"
+     return " (SPI)"
 end
 
 local function parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
@@ -682,19 +727,21 @@ local function parse_firmware_reply(buffer, pinfo, tree, command_value, result_v
     return " (Firmware)"
 end
 
-local function parse_data_reply(buffer, pinfo, tree, command_value, result_value)
+local function parse_pairing_reply(buffer, pinfo, tree, command_value, result_value)
     local result_text = parse_result(result_value:le_uint())
-    local data_value = buffer(8, buffer:len()-8)
-    local data_length = data_value:len()
+    local buffer_value = buffer(8, buffer:len()-8)
+    local buffer_length = buffer_value:len()
+    local pairing_buffer = buffer_value:bytes():tvb("Pairing buffer")
 
-    tree:add_le(command, command_value):append_text(" (Data unknown)")
+    tree:add_le(pairingBuffer, buffer_value)
+    tree:add_le(command, command_value):append_text(" (Pairing unknown)")
 
-    pinfo.cols.info = "Reply   data(" .. command_value .. "):".. result_text .. " size 0x".. cmn.hex(data_length) .. " ->" .. cmn.getBytes(data_value)
-    return " (Data)"
+    pinfo.cols.info = "Reply   Pairing(" .. command_value .. "):".. result_text .. " size 0x".. cmn.hex(buffer_length) .. " ->" .. cmn.getBytes(buffer_value)
+    return " (Pairing)"
 end
 
 local function parse_reply(buffer, pinfo, tree)
-    local report_type_value = buffer(0, 1):le_uint()
+    local report_type_value = buffer(0, 1)
     local command_value =     buffer(3, 1)
     local result_value =      buffer(5, 1)
 
@@ -703,20 +750,30 @@ local function parse_reply(buffer, pinfo, tree)
 
     tree:add_le(result, result_value):append_text(result_text)
 
-    if     report_type_value == McuReport then          report_type_text = parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value == SpiReport then          report_type_text = parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value == PlayerLightsReport then report_type_text = parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value == ImuReport then          report_type_text = parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value == FirmwareReport then     report_type_text = parse_firmware_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value == DataReport then         report_type_text = parse_data_reply(buffer, pinfo, tree, command_value, result_value)
+    if     report_type_value:le_uint() == McuReport then          report_type_text = parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == SpiReport then          report_type_text = parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == PlayerLightsReport then report_type_text = parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ImuReport then          report_type_text = parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == FirmwareReport then     report_type_text = parse_firmware_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == PairingReport then       report_type_text = parse_pairing_reply(buffer, pinfo, tree, command_value, result_value)
     else
-        tree:add_le(command, command_value):append_text(" (0x" .. cmn.hex(report_type_value) .. " unknown)")
-        pinfo.cols.info = "Reply   (0x" .. cmn.hex(report_type_value) .. ", 0x" .. command_value .. ") ->" .. result_text .. cmn.getBytes(buffer(8, buffer:len()-8))
+        tree:add_le(command, command_value):append_text(" (0x" .. cmn.hex(report_type_value:le_uint()) .. " unknown)")
+        pinfo.cols.info = "Reply   (0x" .. cmn.hex(report_type_value:le_uint()) .. ", 0x" .. command_value .. ") ->" .. result_text .. cmn.getBytes(buffer(8, buffer:len()-8))
     end
 
-    tree:add_le(reportType, buffer(0,1)):append_text(report_type_text)
+    tree:add_le(reportType, report_type_value):append_text(report_type_text)
 
     return " (Reply)"
+end
+
+local function parse_rumble(buffer, pinfo, tree)
+    local packet_id_value = buffer(1, 1)
+    local vibration_enabled_value = buffer(2, 1)
+
+    if packet_id_value:le_uint() ~= 0 then
+        tree:add_le(rumblePacketId, packet_id_value):append_text(" ("..bit.band(packet_id_value:le_uint(), 0xf)..")")
+        tree:add_le(rumbleEnabled, vibration_enabled_value)
+    end
 end
 
 function switch2_protocol.dissector(buffer, pinfo, tree)
@@ -726,18 +783,48 @@ function switch2_protocol.dissector(buffer, pinfo, tree)
 
     local subtree = tree:add(switch2_protocol, buffer(), "Switch2 Protocol Data")
 
-    local report_mode_value = buffer(1, 1):le_uint()
+    local report_mode_value = buffer(1, 1)
     local report_mode_text = " (Unknown)"
 
-    if report_mode_value == 0 then report_mode_text = parse_request(buffer(5,buffer:len()-5), pinfo, subtree) -- Temp workaround for bluetooth buffer not aligned correctly
-    elseif report_mode_value == Reply then report_mode_text = parse_reply(buffer, pinfo, subtree)
-    elseif report_mode_value == Request then report_mode_text = parse_request(buffer, pinfo, subtree) end
+    if     report_mode_value:le_uint() == Reply then   report_mode_text = parse_reply(buffer, pinfo, subtree)
+    elseif report_mode_value:le_uint() == Request then report_mode_text = parse_request(buffer, pinfo, subtree) end
 
-    subtree:add_le(reportMode, buffer(1, 1)):append_text(report_mode_text)
-    
+    subtree:add_le(reportMode, report_mode_value):append_text(report_mode_text)
+end
+
+function switch2ble_protocol.dissector(buffer, pinfo, tree)
+    if buffer:len() == 0 then return end
+
+    pinfo.cols.protocol = switch2_protocol.name
+
+    local subtree = tree:add(switch2_protocol, buffer(), "Switch2 Protocol BLE Data")
+
+    local report_mode_value = buffer(1, 1)
+    local report_mode_text = " (Unknown)"
+
+    if report_mode_value:le_uint() == 0 then
+        parse_rumble(buffer, pinfo, subtree)
+        if buffer(0x6, 1):le_uint() == Request then
+            report_mode_value = buffer(0x6, 1)
+            report_mode_text = " (GC Rumble + Request)"
+            parse_request(buffer(0x5, buffer:len() - 0x5), pinfo, subtree)
+        elseif buffer(0x22, 1):le_uint() == Request then
+            report_mode_value = buffer(0x21, 1)
+            report_mode_text = " (Rumble + Request)"
+            parse_request(buffer(0x21, buffer:len() - 0x21), pinfo, subtree)
+        else report_mode_text = " (Rumble)" end
+    elseif bit.band(report_mode_value:le_uint(), 0xf0) == 0x50 then
+        parse_rumble(buffer, pinfo, subtree)
+        report_mode_text = " (Rumble)"
+    elseif report_mode_value:le_uint() == Reply then report_mode_text = parse_reply(buffer, pinfo, subtree)
+    elseif report_mode_value:le_uint() == Request then report_mode_text = parse_request(buffer, pinfo, subtree) end
+
+    subtree:add_le(reportMode,report_mode_value):append_text(report_mode_text)
 end
 
 DissectorTable.get("usb.bulk"):add(0xff, switch2_protocol)
 --DissectorTable.get("usb.bulk"):add(0xffff, switch2_protocol)
-DissectorTable.get("btatt.handle"):add(0x0016, switch2_protocol)
-DissectorTable.get("btatt.handle"):add(0x001a, switch2_protocol)
+DissectorTable.get("btatt.handle"):add(0x0012, switch2ble_protocol) -- BLE rumble only
+DissectorTable.get("btatt.handle"):add(0x0014, switch2ble_protocol) -- BLE command only
+DissectorTable.get("btatt.handle"):add(0x0016, switch2ble_protocol) -- BLE rumble + command
+DissectorTable.get("btatt.handle"):add(0x001a, switch2ble_protocol) -- BLE reply
