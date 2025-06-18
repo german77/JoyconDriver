@@ -729,7 +729,8 @@ function switch2_protocol.dissector(buffer, pinfo, tree)
     local report_mode_value = buffer(1, 1):le_uint()
     local report_mode_text = " (Unknown)"
 
-    if report_mode_value == Reply then report_mode_text = parse_reply(buffer, pinfo, subtree)
+    if report_mode_value == 0 then report_mode_text = parse_request(buffer(5,buffer:len()-5), pinfo, subtree) -- Temp workaround for bluetooth buffer not aligned correctly
+    elseif report_mode_value == Reply then report_mode_text = parse_reply(buffer, pinfo, subtree)
     elseif report_mode_value == Request then report_mode_text = parse_request(buffer, pinfo, subtree) end
 
     subtree:add_le(reportMode, buffer(1, 1)):append_text(report_mode_text)
@@ -738,3 +739,5 @@ end
 
 DissectorTable.get("usb.bulk"):add(0xff, switch2_protocol)
 --DissectorTable.get("usb.bulk"):add(0xffff, switch2_protocol)
+DissectorTable.get("btatt.handle"):add(0x0016, switch2_protocol)
+DissectorTable.get("btatt.handle"):add(0x001a, switch2_protocol)

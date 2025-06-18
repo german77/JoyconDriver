@@ -165,7 +165,44 @@ local function parse_input_report(buffer, pinfo, tree)
     if imu_length_value:le_uint() > 0 then
         tree:add_le(motion, motion_buffer)
         info = info .. parse_motion(motion_buffer, tree)
- end
+    end
+
+    pinfo.cols.info = info
+end
+
+local function parse_wireless_input_report(buffer, pinfo, tree)
+    local packet_id_value =      buffer(0, 1)
+    local status_value =         buffer(1, 1)
+    local buttons_value =        buffer(2, 3)
+    local stick_l_value =        buffer(5, 3)
+    local stick_r_value =        buffer(8, 3)
+    local vibration_code_value = buffer(11, 1)
+    local analog_l_value =       buffer(12, 1)
+    local analog_r_value =       buffer(13, 1)
+    local imu_length_value =     buffer(14, 1)
+    local motion_buffer =        buffer(15, imu_length_value:le_uint())
+
+    local buttons_text = parse_buttons(buttons_value:le_uint())
+    local stick_l_text = parse_left_stick(stick_l_value:bytes())
+    local stick_r_text = parse_right_stick(stick_r_value:bytes())
+
+    tree:add_le(packetId, packet_id_value)
+    tree:add_le(status, status_value)
+    tree:add_le(buttons, buttons_value):append_text(buttons_text)
+    tree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
+    tree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
+    tree:add_le(vibrationCode, vibration_code_value)
+    tree:add_le(leftAnalogTrigger, analog_l_value)
+    tree:add_le(rightAnalogTrigger, analog_r_value)
+    tree:add_le(imuLength, imu_length_value)
+
+    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
+    info = info .. " LTrigger 0x" .. analog_l_value .. " RTrigger 0x" .. analog_r_value
+
+    if imu_length_value:le_uint() > 0 then
+        tree:add_le(motion, motion_buffer)
+        info = info .. parse_motion(motion_buffer, tree)
+    end
 
     pinfo.cols.info = info
 end
@@ -179,11 +216,18 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
     local subtree = tree:add(switch2hid_protocol, buffer(), "Switch2 HID Data")
     local input_type_value = buffer(0, 1)
 
+    -- Temp workaround for bluetooth packets
+    if length == 63 then
+        parse_wireless_input_report(buffer, pinfo, subtree)
+        return
+    end
+
     subtree:add_le(inputType, input_type_value)
 
-    if     input_type_value:le_uint() == NullInputReport then   pinfo.cols.info = "Empty input report"
-    elseif input_type_value:le_uint() == SimpleInputReport then parse_input_report(buffer, pinfo, subtree)
+    if     input_type_value:le_uint() == NullInputReport then     pinfo.cols.info = "Empty input report"
+    elseif input_type_value:le_uint() == SimpleInputReport then   parse_input_report(buffer, pinfo, subtree)
     else pinfo.cols.info = "Unknown input report type " .. input_type_value end
 end
 
 DissectorTable.get("usb.interrupt"):add(0x03, switch2hid_protocol)
+DissectorTable.get("btatt.handle"):add(0x000e, switch2hid_protocol)
