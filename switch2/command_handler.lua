@@ -135,8 +135,9 @@ local McuReport =          0x01 -- MCU commands. NFC read/write
 local SpiReport =          0x02 -- SPI commands. Read
 local InitReport =         0x03 -- Unknown, First command with console serial
 local Report07 =           0x07 -- Unknown
+local Report08 =           0x08 -- Unknown
 local PlayerLightsReport = 0x09 -- Controller leds. Write
-local Report0a =           0x0a -- Unknown
+local Report0a =           0x0a -- Unknown. Vibration related
 local ImuReport =          0x0c -- IMU commands. Enable/Disable
 local FirmwareReport =     0x0d -- Firmware update commands
 local Report10 =           0x10 -- Unknown
@@ -156,16 +157,34 @@ local McuCommand0c =   0x0c -- Unknown
 local McuReadBuffer =  0x14 -- Read MCU buffer
 local McuWriteBuffer = 0x15 -- Write MCU buffer
 
--- IMU commands
-local ImuDisable = 0x02 -- Unknown, no motion output after this command
-local ImuEnable =  0x04 -- Unknown, motion output after this command
-
 -- SPI commands
 local SpiRead = 0x04 -- Read up to 0x40 bytes?
 local SpiWrite = 0x05 -- Write up to 0x40 bytes?
 
+-- Init commands
+local InitCommand07 = 0x07 -- Unknown. Set final LTK key?
+local InitCommand0a = 0x0a -- Unknown
+local InitCommand0c = 0x0c -- Unknown
+local InitCommand0d = 0x0d -- Unknown
+
+-- 07 commands
+local Report07Command01 = 0x01 -- Unknown
+
+-- 08 commands
+local Report08Command01 = 0x01 -- Unknown
+local Report08Command02 = 0x02 -- Unknown
+
 -- Player lights commands
 local PlayerLightsSetLedPattern = 0x07 -- Set Led pattern
+
+-- 0a commands
+local Report0aCommand02 = 0x02 -- Unknown. Vibration samples?
+local Report0aCommand08 = 0x08 -- Unknown
+
+-- IMU commands
+local ImuDisable =   0x02 -- Unknown, no motion output after this command
+local ImuCommand03 = 0x03 -- Unknown
+local ImuEnable =    0x04 -- Unknown, motion output after this command
 
 -- Firmware commands
 local FirmwareCommand01 =  0x01 -- Unknown. Init?
@@ -175,11 +194,23 @@ local FirmwareData =       0x04 -- Sends the firmware data in 0x4c chunks
 local FirmwareCommand04 =  0x05 -- Unknown
 local FirmwareCommand05 =  0x06 -- Unknown. Finalize?
 
+-- 10 commands
+local Report10Command01 = 0x01 -- Unknown
+
+-- 11 commands
+local Report11Command03 = 0x03 -- Unknown
+
 -- Pairing commands
 local PairingSetAddress = 0x01
 local PairingCommand02 =  0x02
 local PairingCommand03 =  0x03
 local PairingCommand04 =  0x04
+
+-- 16 commands
+local Report16Command01 = 0x01 -- Unknown
+
+-- 18 commands
+local Report18Command01 = 0x01 -- Unknown
 
 local function parse_result(result_value)
     if result_value == ResultAck then return " (ACK)" end
