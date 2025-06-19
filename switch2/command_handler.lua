@@ -3,10 +3,12 @@ cmn = require "common"
 switch2_protocol = Proto("switch2", "Nintendo Switch 2 controller Protocol")
 switch2ble_protocol = Proto("switch2_ble", "Nintendo Switch 2 controller Protocol BLE")
 
-local reportType = ProtoField.uint8("switch2.reportType", "ReportType", base.HEX)
-local reportMode = ProtoField.uint8("switch2.reportMode", "ReportMode", base.HEX)
-local command =    ProtoField.uint8("switch2.command",    "Command",    base.HEX)
-local result =     ProtoField.uint8("switch2.result",     "Result",     base.HEX)
+local reportType =    ProtoField.uint8("switch2.reportType",    "ReportType",    base.HEX)
+local reportMode =    ProtoField.uint8("switch2.reportMode",    "ReportMode",    base.HEX)
+local command =       ProtoField.uint8("switch2.command",       "Command",       base.HEX)
+local commandLength = ProtoField.uint8("switch2.commandLength", "CommandLength", base.HEX)
+local commandBuffer = ProtoField.bytes("switch2.commandBuffer", "CommandBuffer", base.NONE)
+local result =        ProtoField.uint8("switch2.result",        "Result",        base.HEX)
 -- rumble
 local rumblePacketId = ProtoField.uint8("switch2.rumblePacketId", "RumblePacketId", base.HEX)
 local rumbleEnabled =  ProtoField.bool("switch2.rumbleEnabled",   "rumbleEnabled")
@@ -22,7 +24,6 @@ local spiMin =     ProtoField.uint16("switch2.spiMin",    "SpiMin",     base.HEX
 -- led
 local ledPattern = ProtoField.uint8("switch2.ledPattern", "LedPattern", base.HEX)
 -- pairing
-local pairingLength =  ProtoField.uint8("switch2.pairingLength",  "PairingLength",  base.DEC)
 local pairingBuffer =  ProtoField.bytes("switch2.pairingBuffer",  "PairingBuffer",  base.NONE)
 local pairingEntries = ProtoField.uint8("switch2.pairingEntries", "PairingEntries", base.DEC)
 local pairingAddress = ProtoField.bytes("switch2.pairingAddress", "PairingAddress", base.NONE)
@@ -30,7 +31,6 @@ local pairingAddress = ProtoField.bytes("switch2.pairingAddress", "PairingAddres
 local firmwareLength = ProtoField.uint8("switch2.firmwareLength", "FirmwareLength", base.DEC)
 local firmwareData =   ProtoField.bytes("switch2.firmwareData",   "FirmwareData",   base.NONE)
 -- mcu
-local mcuReadType =   ProtoField.uint8("switch2.mcuReadType",    "McuReadType",   base.DEC)
 local mcuBlockCount = ProtoField.uint8("switch2.mcuBlockCount",  "McuBlockCount", base.DEC)
 local mcuReadBlock =  ProtoField.bytes("switch2.mcuReadBlock",   "McuReadBlock",  base.NONE)
 local mcuWriteBlock = ProtoField.string("switch2.mcuWriteBlock", "McuWriteBlock")
@@ -42,8 +42,8 @@ local mcuTagType =    ProtoField.uint8("switch2.mcuTagType",     "McuTagType",  
 local mcuUID =        ProtoField.bytes("switch2.mcuUID",         "McuUID",        base.NONE)
 local mcuUIDLength =  ProtoField.uint8("switch2.mcuUIDLength",   "McuUIDLength",  base.DEC)
 local mcuUnk =        ProtoField.uint8("switch2.mcuUnk",         "McuUnk",        base.HEX)
-local mcuDataOffset = ProtoField.uint8("switch2.mcuDataOffset",  "McuDataOffset", base.HEX)
-local mcuDataLength = ProtoField.uint8("switch2.mcuDataLength",  "McuDataLength", base.HEX)
+local mcuDataOffset = ProtoField.uint16("switch2.mcuDataOffset", "McuDataOffset", base.HEX)
+local mcuDataLength = ProtoField.uint16("switch2.mcuDataLength", "McuDataLength", base.HEX)
 local mcuDataType =   ProtoField.uint8("switch2.mcuDataType",    "McuDataType",   base.HEX)
 local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",     base.NONE)
 
@@ -52,10 +52,11 @@ local mcuDataBuffer = {}
 local mcuDataBufferSize = 0
 
 switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, spiMagic,
-                           ledPattern, pairingLength, pairingBuffer, firmwareLength, firmwareData, mcuReadType, mcuBlockCount,
+                           ledPattern, firmwareLength, firmwareData, mcuBlockCount, pairingBuffer,
                            mcuReadBlock, mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType,
-                           mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock,
-                           spiMax,spiCenter,spiMin,rumblePacketId,rumbleEnabled, pairingEntries ,pairingAddress}
+                           mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock, spiMax,
+                           spiCenter,spiMin,rumblePacketId,rumbleEnabled, pairingEntries ,pairingAddress,commandLength,
+                           commandBuffer}
 
 -- Input report mode
 local Reply =   0x01 -- Reply from controller
@@ -82,7 +83,7 @@ local PidGCController2 =    0x2073
 
 -- SPI addresss, 2MB
 local SpiFirmwareA =            0x000000 -- 0x30000+ bytes, SYS
-local SpiUnknown11000 =         0x011000 -- 4bytes, update version? 0x00500700
+local SpiUnknown11000 =         0x011000 -- 0x4 bytes, update version? 0x00500700
 local SpiUnknown12000 =         0x012000 -- 0x2 bytes, Unknown 0xEFBE or 0xFFFF
 local SpiDeviceInfo =           0x013000 -- 0x40 bytes
 local SpiSerialNumber =         0x013002 -- 0xe bytes, HBW, HEJ, HEW
@@ -108,7 +109,7 @@ local SpiFirmwareB =            0x015000 -- 0x30000+ bytes, SYS
 local SpiFirmwareC =            0x075000 -- 0x30000+ bytes, SYS
 local SpiFirmwareD =            0x175000 -- 0x30000+ bytes, DSPH MT3616A0DSP
 local SpiPairingInfo =          0x1fa000 -- 0x58 bytes
-local SpiPairingEntries =       0x1fa000 -- 0x1 bytes. Each entry is 0x1c bytes
+local SpiPairingEntries =       0x1fa000 -- 0x1 byte. Each entry is 0x1c bytes
 local SpiConsoleMacA =          0x1fa008 -- 0x6 bytes
 local SpiLtkA =                 0x1fa01a -- 0x10 bytes
 local SpiConsoleMacB =          0x1fa030 -- 0x6 bytes
@@ -212,10 +213,6 @@ local function parse_spi_address(address)
     return " (Unknown)"
 end
 
-local function parse_mcu_read_type(read_type)
-    if read_type == 19 then return " (Read NTAG)" end
-    return " (Unknown)"
-end
 
 local function parse_mcu_tag_type(tag_type)
     if tag_type == 0x01 then return " (NTAG 215)" end
@@ -223,24 +220,18 @@ local function parse_mcu_tag_type(tag_type)
 end
 
 local function parse_mcu_state(buffer, pinfo, tree)
-    local buffer_value = buffer(5, 3)
-
-    tree:add_le(mcuBuffer, buffer_value)
-
-    pinfo.cols.info = "Request MCU state: ->" .. cmn.getBytes(buffer_value)
+    pinfo.cols.info = "Request MCU state: ->" .. cmn.getBytes(buffer)
     return " (MCU state)"
 end
 
 local function parse_mcu_read_device(buffer, pinfo, tree)
-    local mcu_read_type_value = buffer(5, 1)
-    local mcu_read_type_text = parse_mcu_read_type(mcu_read_type_value:le_uint())
-    local mcu_unknown_value = buffer(8, 1)
-    local uid_length_value = buffer(9, 1)
-    local uid_value = buffer(10, uid_length_value:le_uint())
-    local tag_type_value = buffer(17, 1)
+    local mcu_unknown_value = buffer(0, 1)
+    local uid_length_value = buffer(1, 1)
+    local uid_value = buffer(2, uid_length_value:le_uint())
+    local tag_type_value = buffer(9, 1)
     local tag_type_text = parse_mcu_tag_type(tag_type_value:le_uint())
-    local block_count_value = buffer(18, 1)
-    local blocks_value = buffer(19, block_count_value:le_uint()*2)
+    local block_count_value = buffer(10, 1)
+    local blocks_value = buffer(11, block_count_value:le_uint()*2)
 
     tree:add_le(mcuUnk, mcu_unknown_value)
     tree:add_le(mcuUIDLength, uid_length_value)
@@ -248,7 +239,6 @@ local function parse_mcu_read_device(buffer, pinfo, tree)
     tree:add_le(mcuTagType, tag_type_value):append_text(tag_type_text)
     tree:add_le(mcuBlockCount, block_count_value)
     tree:add_le(mcuReadBlock, blocks_value)
-    tree:add_le(mcuReadType, mcu_read_type_value):append_text(mcu_read_type_text)
 
     pinfo.cols.info = "Request MCU read device:"..tag_type_text.." uid" .. cmn.getBytes(uid_value) .. " blocks" .. cmn.getBytes(blocks_value)
 
@@ -321,12 +311,10 @@ local function parse_mcu_write_device(buffer, pinfo, tree)
 end
 
 local function parse_mcu_write_buffer(buffer, pinfo, tree)
-    local mcu_unknown_value = buffer(5, 1)
-    local data_offset_value = buffer(8, 2)
-    local data_length_value = buffer(10, 1)
-    local buffer_value =      buffer(12, data_length_value:le_uint())
+    local data_offset_value = buffer(0, 2)
+    local data_length_value = buffer(2, 2)
+    local buffer_value =      buffer(4, data_length_value:le_uint())
 
-    tree:add_le(mcuUnk, mcu_unknown_value)
     tree:add_le(mcuDataOffset, data_offset_value)
     tree:add_le(mcuDataLength, data_length_value)
     tree:add_le(mcuBuffer, buffer_value)
@@ -345,11 +333,11 @@ local function parse_mcu_write_buffer(buffer, pinfo, tree)
 end
 
 local function parse_mcu_read_buffer(buffer, pinfo, tree)
-    pinfo.cols.info = "Request MCU read buffer: ->".. cmn.getBytes(buffer(5,buffer:len()-5))
+    pinfo.cols.info = "Request MCU read buffer: ->".. cmn.getBytes(buffer)
     return " (MCU read buffer)"
 end
 
-local function parse_mcu_command(buffer, pinfo, tree, command_value)
+local function parse_mcu_command(buffer, pinfo, tree, command_value, command_length_value)
     local command_text = " (MCU unknown)"
 
     if     command_value:le_uint() == McuState then       command_text = parse_mcu_state(buffer, pinfo, tree)
@@ -357,7 +345,7 @@ local function parse_mcu_command(buffer, pinfo, tree, command_value)
     elseif command_value:le_uint() == McuWireDevice then  command_text = parse_mcu_write_device(buffer, pinfo, tree)
     elseif command_value:le_uint() == McuReadBuffer then  command_text = parse_mcu_write_buffer(buffer, pinfo, tree)
     elseif command_value:le_uint() == McuWriteBuffer then command_text = parse_mcu_read_buffer(buffer, pinfo, tree)
-    else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. cmn.getBytes(buffer(5,buffer:len()-5)) end
+    else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. cmn.getBytes(buffer) end
 
     tree:add_le(command, command_value):append_text(command_text)
 
@@ -372,9 +360,9 @@ local function parse_stick(stick_value)
 end
 
 local function parse_spi_command(buffer, pinfo, tree, command_value)
-    local length_value =      buffer(8, 1)
-    local sub_command_value = buffer(9, 1)
-    local address_value =     buffer(0xc, 4)
+    local length_value =      buffer(0, 1)
+    local sub_command_value = buffer(1, 1)
+    local address_value =     buffer(4, 4)
     local address_text = parse_spi_address(address_value:le_uint())
     local command_text = " (Unknown)"
     -- TODO: Fix SPI parsing
@@ -383,12 +371,12 @@ local function parse_spi_command(buffer, pinfo, tree, command_value)
         pinfo.cols.info = "Request SPI read: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value
     elseif command_value:le_uint() == SpiWrite then
         command_text = " (SPI write)"
-        pinfo.cols.info = "Request SPI write: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value .. cmn.getBytes(buffer(0x10,length_value:le_uint()))
-        tree:add_le(spiData, buffer(0x10,length_value:le_uint()))
-        tree:add_le(spiMagic, buffer(0x10,2))
-        tree:add_le(spiCenter, buffer(0x12,3)):append_text(parse_stick(buffer(0x12,3):bytes()))
-        tree:add_le(spiMax, buffer(0x15,3)):append_text(parse_stick(buffer(0x15,3):bytes()))
-        tree:add_le(spiMin, buffer(0x18,3)):append_text(parse_stick(buffer(0x18,3):bytes()))
+        pinfo.cols.info = "Request SPI write: address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value .. cmn.getBytes(buffer(0x8,length_value:le_uint()))
+        tree:add_le(spiData, buffer(0x8,length_value:le_uint()))
+        tree:add_le(spiMagic, buffer(0x8,2))
+        tree:add_le(spiCenter, buffer(0xa,3)):append_text(parse_stick(buffer(0xa,3):bytes()))
+        tree:add_le(spiMax, buffer(0xd,3)):append_text(parse_stick(buffer(0xd,3):bytes()))
+        tree:add_le(spiMin, buffer(0x11,3)):append_text(parse_stick(buffer(0x11,3):bytes()))
     else pinfo.cols.info = "Request SPI 0x" .. sub_command_value .. ": address 0x" .. cmn.hex(address_value:le_uint()) .. " size 0x"..length_value end
 
     tree:add_le(spiLength, length_value)
@@ -399,9 +387,9 @@ local function parse_spi_command(buffer, pinfo, tree, command_value)
     return " (SPI)"
 end
 
-local function parse_player_lights_command(buffer, pinfo, tree, command_value)
+local function parse_player_lights_command(buffer, pinfo, tree, command_value, command_length_value)
     local command_text = " (Player lights unknown)"
-    local led_pattern_value = buffer(8, 1)
+    local led_pattern_value = buffer(0, 1)
 
     if command_value:le_uint() == PlayerLightsSetLedPattern then
         pinfo.cols.info = "Request Player lights: set led pattern 0x" .. cmn.hex(led_pattern_value:le_uint())
@@ -416,7 +404,7 @@ local function parse_player_lights_command(buffer, pinfo, tree, command_value)
     return " (Player lights)"
 end
 
-local function parse_imu_command(buffer, pinfo, tree, command_value)
+local function parse_imu_command(buffer, pinfo, tree, command_value, command_length_value)
     local command_text = " (IMU unknown)"
 
     if command_value:le_uint() == ImuDisable then
@@ -435,7 +423,7 @@ local function parse_imu_command(buffer, pinfo, tree, command_value)
 end
 
 local function parse_firmware_properties(buffer, pinfo, tree)
-    local length_value = buffer(0xd, 4)
+    local length_value = buffer(5, 4)
 
     tree:add_le(firmwareLength, length_value)
 
@@ -444,8 +432,8 @@ local function parse_firmware_properties(buffer, pinfo, tree)
 end
 
 local function parse_firmware_data(buffer, pinfo, tree)
-    local length_value = buffer(8, 1)
-    local data_value = buffer(0xc, length_value:le_uint())
+    local length_value = buffer(0, 1)
+    local data_value = buffer(0x4, length_value:le_uint())
 
     tree:add_le(firmwareLength, length_value)
     tree:add_le(firmwareData, data_value)
@@ -454,12 +442,12 @@ local function parse_firmware_data(buffer, pinfo, tree)
     return " (Firmware data)"
 end
 
-local function parse_firmware_command(buffer, pinfo, tree, command_value)
+local function parse_firmware_command(buffer, pinfo, tree, command_value, command_length_value)
     local command_text = " (Firmware unknown)"
 
     if     command_value:le_uint() == FirmwareProperties then command_text = parse_firmware_properties(buffer, pinfo, tree)
     elseif command_value:le_uint() == FirmwareData then       command_text = parse_firmware_data(buffer, pinfo, tree)
-    else pinfo.cols.info = "Request Firmware(0x"..command_value..") ->".. cmn.getBytes(buffer(5,buffer:len()-5)) end
+    else pinfo.cols.info = "Request Firmware(0x"..command_value..") ->".. cmn.getBytes(buffer) end
 
     tree:add_le(command, command_value):append_text(command_text)
 
@@ -483,39 +471,40 @@ local function parse_pairing_set_address(buffer, pinfo, tree)
     return " (Pairing Set Address)"
 end
 
-local function parse_paring_command(buffer, pinfo, tree, command_value)
-    local length_value = buffer(5,1)
-    local buffer_value = buffer(8,length_value:le_uint())
-    local pairing_buffer = buffer_value:bytes():tvb("Pairing buffer")
+local function parse_paring_command(buffer, pinfo, tree, command_value, command_length_value)
     local command_text = " (Pairing unknown)"
 
-    if command_value:le_uint() == PairingSetAddress then command_text = parse_pairing_set_address(pairing_buffer, pinfo, tree)
-    else pinfo.cols.info = "Request Pairing(" .. command_value .. "): size 0x" .. length_value .. " ->" .. cmn.getBytes(buffer_value) end
+    if command_value:le_uint() == PairingSetAddress then command_text = parse_pairing_set_address(buffer, pinfo, tree)
+    else pinfo.cols.info = "Request Pairing(" .. command_value .. "): size 0x" .. command_length_value .. " ->" .. cmn.getBytes(buffer) end
 
-    tree:add_le(pairingLength, length_value)
-    tree:add_le(pairingBuffer, buffer_value)
     tree:add_le(command, command_value):append_text(command_text)
 
     return " (Pairing)"
 end
 
 local function parse_request(buffer, pinfo, tree)
-    local report_type_value = buffer(0,1):le_uint()
+    local report_type_value = buffer(0,1)
     local report_type_text = " (Unknown)"
     local command_value = buffer(3,1)
+    local command_length_value = buffer(5,1)
+    local command_buffer_value = buffer(8,command_length_value:le_uint())
+    local command_buffer = command_buffer_value:bytes():tvb("Command buffer")
 
-    if report_type_value == McuReport then report_type_text = parse_mcu_command(buffer, pinfo, tree, command_value)
-    elseif report_type_value == SpiReport then report_type_text = parse_spi_command(buffer, pinfo, tree, command_value)
-    elseif report_type_value == PlayerLightsReport then report_type_text = parse_player_lights_command(buffer, pinfo, tree, command_value)
-    elseif report_type_value == ImuReport then report_type_text = parse_imu_command(buffer, pinfo, tree, command_value)
-    elseif report_type_value == FirmwareReport then report_type_text = parse_firmware_command(buffer, pinfo, tree, command_value)
-    elseif report_type_value == PairingReport then report_type_text = parse_paring_command(buffer, pinfo, tree, command_value)
+    tree:add_le(commandLength, command_length_value)
+    tree:add_le(commandBuffer, command_buffer_value)
+
+    if     report_type_value:le_uint() == McuReport then report_type_text = parse_mcu_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == SpiReport then report_type_text = parse_spi_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == PlayerLightsReport then report_type_text = parse_player_lights_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ImuReport then report_type_text = parse_imu_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == FirmwareReport then report_type_text = parse_firmware_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == PairingReport then report_type_text = parse_paring_command(command_buffer, pinfo, tree, command_value, command_length_value)
     else
-        tree:add_le(command, command_value):append_text(" (0x" .. cmn.hex(report_type_value) .. " unknown)")
-        pinfo.cols.info = "Request (0x" .. cmn.hex(report_type_value) .. ", 0x" .. command_value .. ") ->".. cmn.getBytes(buffer(5,buffer:len()-5))
+        tree:add_le(command, command_value):append_text(" (0x" .. cmn.hex(report_type_value:le_uint()) .. " unknown)")
+        pinfo.cols.info = "Request (0x" .. cmn.hex(report_type_value:le_uint()) .. ", 0x" .. command_value .. ") ->".. cmn.getBytes(command_buffer)
     end
 
-    tree:add_le(reportType, buffer(0, 1)):append_text(report_type_text)
+    tree:add_le(reportType, report_type_value):append_text(report_type_text)
 
     return " (Request)"
 end
