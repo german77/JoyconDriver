@@ -756,13 +756,25 @@ local function parse_reply(buffer, pinfo, tree)
 end
 
 local function parse_rumble(buffer, pinfo, tree)
-    local packet_id_value = buffer(1, 1)
-    local vibration_enabled_value = buffer(2, 1)
+    local packet_id_A_value = buffer(1, 1)
+    local packet_id_B_value = buffer(17, 1)
+    local vibration_text="";
 
-    if packet_id_value:le_uint() ~= 0 then
-        tree:add_le(rumblePacketId, packet_id_value):append_text(" ("..bit.band(packet_id_value:le_uint(), 0xf)..")")
+    if bit.band(packet_id_A_value:le_uint(), 0xf0) == 0x50 then
+        local vibration_enabled_value = buffer(2, 1)
+        tree:add_le(rumblePacketId, packet_id_A_value):append_text(" ("..bit.band(packet_id_A_value:le_uint(), 0xf)..")")
         tree:add_le(rumbleEnabled, vibration_enabled_value)
+        vibration_text = bit.band(packet_id_A_value:le_uint(), 0xf) .. cmn.getBytes(buffer(3, 0xc))
     end
+
+    if bit.band(packet_id_B_value:le_uint(), 0xf0) == 0x50 then
+        local vibration_enabled_value = buffer(18, 1)
+        tree:add_le(rumblePacketId, packet_id_B_value):append_text(" ("..bit.band(packet_id_B_value:le_uint(), 0xf)..")")
+        tree:add_le(rumbleEnabled, vibration_enabled_value)
+        vibration_text = vibration_text .. ", " .. bit.band(packet_id_B_value:le_uint(), 0xf) .. cmn.getBytes(buffer(19, 0xc))
+    end
+
+    pinfo.cols.info = "Send vibration:" .. vibration_text
 end
 
 function switch2_protocol.dissector(buffer, pinfo, tree)
@@ -787,32 +799,34 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
     pinfo.cols.protocol = switch2_protocol.name
 
     local subtree = tree:add(switch2_protocol, buffer(), "Switch2 Protocol BLE Data")
+    local payload_buffer = buffer:bytes():tvb("Payload")
 
-    local report_mode_value = buffer(1, 1)
+    local report_mode_value = payload_buffer(1, 1)
     local report_mode_text = " (Unknown)"
 
     if report_mode_value:le_uint() == 0 then
-        parse_rumble(buffer, pinfo, subtree)
-        if buffer(0x6, 1):le_uint() == Request then
-            report_mode_value = buffer(0x6, 1)
+        parse_rumble(payload_buffer, pinfo, subtree)
+        if payload_buffer(0x6, 1):le_uint() == Request then
+            local command_buffer = payload_buffer(0x5, payload_buffer:len() - 0x5):bytes():tvb("Command payload")
+            report_mode_value = payload_buffer(0x6, 1)
             report_mode_text = " (GC Rumble + Request)"
-            parse_request(buffer(0x5, buffer:len() - 0x5), pinfo, subtree)
-        elseif buffer(0x22, 1):le_uint() == Request then
-            report_mode_value = buffer(0x21, 1)
+            parse_request(command_buffer, pinfo, subtree)
+        elseif payload_buffer(0x22, 1):le_uint() == Request then
+            local command_buffer = payload_buffer(0x21, payload_buffer:len() - 0x21):bytes():tvb("Command payload")
+            report_mode_value = payload_buffer(0x21, 1)
             report_mode_text = " (Rumble + Request)"
-            parse_request(buffer(0x21, buffer:len() - 0x21), pinfo, subtree)
+            parse_request(command_buffer, pinfo, subtree)
         else report_mode_text = " (Rumble)" end
     elseif bit.band(report_mode_value:le_uint(), 0xf0) == 0x50 then
-        parse_rumble(buffer, pinfo, subtree)
+        parse_rumble(payload_buffer, pinfo, subtree)
         report_mode_text = " (Rumble)"
-    elseif report_mode_value:le_uint() == Reply then report_mode_text = parse_reply(buffer, pinfo, subtree)
-    elseif report_mode_value:le_uint() == Request then report_mode_text = parse_request(buffer, pinfo, subtree) end
+    elseif report_mode_value:le_uint() == Reply then report_mode_text = parse_reply(payload_buffer, pinfo, subtree)
+    elseif report_mode_value:le_uint() == Request then report_mode_text = parse_request(payload_buffer, pinfo, subtree) end
 
     subtree:add_le(reportMode,report_mode_value):append_text(report_mode_text)
 end
 
 DissectorTable.get("usb.bulk"):add(0xff, switch2_protocol)
---DissectorTable.get("usb.bulk"):add(0xffff, switch2_protocol)
 DissectorTable.get("btatt.handle"):add(0x0012, switch2ble_protocol) -- BLE rumble only
 DissectorTable.get("btatt.handle"):add(0x0014, switch2ble_protocol) -- BLE command only
 DissectorTable.get("btatt.handle"):add(0x0016, switch2ble_protocol) -- BLE rumble + command
