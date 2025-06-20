@@ -83,46 +83,55 @@ local PidProController2 =   0x2069
 local PidGCController2 =    0x2073
 
 -- SPI addresss, 2MB
-local SpiFirmwareA =            0x000000 -- 0x30000+ bytes, SYS
-local SpiFirmwareFailSafeAddr = 0x011000 -- 0x4 bytes, Address to last known good firmware 0xFFFFFFFF, 0x015000, 0x075000
-local SpiUnknown12000 =         0x012000 -- 0x2 bytes, Unknown 0xEFBE or 0xFFFF
-local SpiDeviceInfo =           0x013000 -- 0x40 bytes
-local SpiSerialNumber =         0x013002 -- 0xe bytes, HBW, HEJ, HEW
-local SpiVendorId =             0x013012 -- 0x2 bytes
-local SpiProductId =            0x013014 -- 0x2 bytes
-local SpiColorA =               0x013019 -- 0x3 bytes RGB
-local SpiColorB =               0x01301c -- 0x3 bytes RGB
-local SpiColorC =               0x01301f -- 0x3 bytes RGB
-local SpiColorD =               0x013022 -- 0x3 bytes RGB
-local SpiUnknown13040 =         0x013040 -- 0x10 bytes
-local SpiUnknown13060 =         0x013060 -- 0x20 bytes
-local SpiCalibrationA =         0x013080 -- 0x40 bytes
-local SpiCalibrationB =         0x0130C0 -- 0x40 bytes
-local SpiUnknown13100 =         0x013100 -- 0x18 bytes
-local SpiUnknown13140 =         0x013140 -- 0x9 bytes
-local SpiUnknown13e00 =         0x013e00 -- 0x20 bytes, serial like number
-local SpiUnknown13e20 =         0x013e20 -- 0x4 bytes
-local SpiUnknown13e30 =         0x013e30 -- 0xa bytes
-local SpiUnknown13e60 =         0x013e60 -- 0x2 bytes
-local SpiUnknown13e80 =         0x013e80 -- 0x9 bytes
-local SpiUnknown13efb =         0x013efb -- 0x4 bytes
-local SpiFirmwareB =            0x015000 -- 0x30000+ bytes, SYS
-local SpiFirmwareC =            0x075000 -- 0x30000+ bytes, SYS
-local SpiFirmwareD =            0x175000 -- 0x30000+ bytes, DSPH MT3616A0DSP
-local SpiPairingInfo =          0x1fa000 -- 0x58 bytes
-local SpiPairingEntries =       0x1fa000 -- 0x1 byte. Each entry is 0x1c bytes
-local SpiConsoleMacA =          0x1fa008 -- 0x6 bytes
-local SpiLtkA =                 0x1fa01a -- 0x10 bytes
-local SpiConsoleMacB =          0x1fa030 -- 0x6 bytes
-local SpiLtkB =                 0x1fa042 -- 0x10 bytes
-local SpiUnknown1fe000 =        0x1fe000 -- 0x100 bytes
-local SpiCalibrationMotion =    0x1fc000 -- 0x40 bytes, 0xFF...FF. no calibration
-local SpiCalibrationJoystickL = 0x1fc040 -- 0xb bytes, 0xFF...FF. no calibration
-local SpiCalibrationJoystickR = 0x1fc060 -- 0xb bytes, 0xFF...FF no calibration
-local SpiShipmentFlagA =        0x1fd000 -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
-local SpiShipmentFlagB =        0x1fd010 -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
-local SpiUnknown1ff000 =        0x1ff000 -- 0x58 bytes
-local SpiUnknown1ff400 =        0x1ff400 -- 0x490 bytes
+local Spi = {
+    InitialFirmware =      0x000000, -- 0x30000+ bytes, SYS
+    FirmwareFailSafeAddr = 0x011000, -- 0x4 bytes, Address to last known good firmware 0xFFFFFFFF, 0x015000, 0x075000
+    Unknown12000 =         0x012000, -- 0x2 bytes, Unknown 0xBEEF or 0xFFFF
+    DeviceInfo =           0x013000, -- 0x40 bytes
+    Unknown13000 =         0x013000, -- 0x2 bytes, 0x0100
+    SerialNumber =         0x013002, -- 0xe bytes, HBW, HEJ, HEW
+    VendorId =             0x013012, -- 0x2 bytes
+    ProductId =            0x013014, -- 0x2 bytes
+    Unknown13016 =         0x013016, -- 0x3 bytes, 0x010601
+    ColorA =               0x013019, -- 0x3 bytes RGB
+    ColorB =               0x01301c, -- 0x3 bytes RGB
+    ColorC =               0x01301f, -- 0x3 bytes RGB
+    ColorD =               0x013022, -- 0x3 bytes RGB
+    Unknown13040 =         0x013040, -- 0x10 bytes
+    Unknown13060 =         0x013060, -- 0x20 bytes
+    CalibrationA =         0x013080, -- 0x40 bytes
+    CalibrationB =         0x0130C0, -- 0x40 bytes
+    Unknown13100 =         0x013100, -- 0x18 bytes
+    Unknown13140 =         0x013140, -- 0x9 bytes
+    Unknown13e00 =         0x013e00, -- 0x20 bytes, serial like number
+    Unknown13e20 =         0x013e20, -- 0x4 bytes, 0x01020202
+    Unknown13e30 =         0x013e30, -- 0xa bytes, 0x03020401050206020702
+    Unknown13e60 =         0x013e60, -- 0x2 bytes, 0x1100
+    Unknown13e80 =         0x013e80, -- 0x9 bytes, 0x0023E9CE0041304B41
+    Unknown13efb =         0x013efb, -- 0x4 bytes, 0x0100150C
+    FailSafeFirmwareA =    0x015000, -- 0x30000+ bytes, SYS
+    FailSafeFirmwareB =    0x075000, -- 0x30000+ bytes, SYS
+    FirmwareUnknown =      0x0D5000, -- 0x9000+ bytes
+    FirmwareDsph =         0x175000, -- 0x30000+ bytes, DSPH MT3616A0DSP
+    PairingInfo =          0x1fa000, -- 0x58 bytes
+    PairingEntries =       0x1fa000, -- 0x1 byte. Each entry is 0x28 bytes
+    ConsoleMacA =          0x1fa008, -- 0x6 bytes
+    LtkA =                 0x1fa01a, -- 0x10 bytes
+    ConsoleMacB =          0x1fa030, -- 0x6 bytes
+    LtkB =                 0x1fa042, -- 0x10 bytes
+    Unknown1fb000 =        0x1fb000, -- 0x8 bytes
+    Unknown1fb00e =        0x1fb00e, -- 0x2 bytes
+    Unknown1fb042 =        0x1fb042, -- 0x1c bytes
+    Unknown1fb070 =        0x1fb070, -- 0x12 bytes
+    CalibrationMotion =    0x1fc000, -- 0x40 bytes, 0xFF...FF. no calibration
+    CalibrationJoystickL = 0x1fc040, -- 0xb bytes, 0xFF...FF. no calibration
+    CalibrationJoystickR = 0x1fc060, -- 0xb bytes, 0xFF...FF no calibration
+    ShipmentFlagA =        0x1fd000, -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
+    ShipmentFlagB =        0x1fd010, -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
+    Unknown1fe000 =        0x1fe000, -- 0x100 bytes
+    Unknown1ff000 =        0x1ff000, -- 0x58 bytes
+    Unknown1ff400 =        0x1ff400 -- 0x490 bytes
+}
 
 -- SPI magic values
 local SpiCalibrationMagic = 0xb2a1 -- If present user calibration data is set
@@ -229,28 +238,30 @@ local function parse_result(result_value)
 end
 
 local function parse_spi_address(address)
-    if address == SpiFirmwareA then return " (Firmware A)" end
-    if address == SpiDeviceInfo then return " (Device info)" end
-    if address == SpiSerialNumber then return " (Serial Number)" end
-    if address == SpiVendorId then return " (Vendor ID)" end
-    if address == SpiProductId then return " (Product ID)" end
-    if address == SpiColorA then return " (Color A)" end
-    if address == SpiColorB then return " (Color B)" end
-    if address == SpiColorC then return " (Color C)" end
-    if address == SpiColorD then return " (Color D)" end
-    if address == SpiCalibrationA then return " (Calibration A)" end
-    if address == SpiCalibrationB then return " (Calibration B)" end
-    if address == SpiFirmwareB then return " (Firmware B)" end
-    if address == SpiPairingInfo then return " (Pairing Info)" end
-    if address == SpiConsoleMacA then return " (Console MAC A)" end
-    if address == SpiConsoleMacB then return " (Console MAC B)" end
-    if address == SpiLtkA then return " (LTK A)" end
-    if address == SpiLtkB then return " (LTK B)" end
-    if address == SpiCalibrationMotion then return " (User Motion calibration)" end
-    if address == SpiCalibrationJoystickL then return " (User Joystick L calibration)" end
-    if address == SpiCalibrationJoystickR then return " (User Joystick R calibration)" end
-    if address == SpiShipmentFlagA then return " (SpiShipmentFlagA)" end
-    if address == SpiShipmentFlagB then return " (SpiShipmentFlagB)" end
+    if address == Spi.InitialFirmware then return " (Initial Firmware)" end
+    if address == Spi.DeviceInfo then return " (Device info)" end
+    if address == Spi.SerialNumber then return " (Serial Number)" end
+    if address == Spi.VendorId then return " (Vendor ID)" end
+    if address == Spi.ProductId then return " (Product ID)" end
+    if address == Spi.ColorA then return " (Color A)" end
+    if address == Spi.ColorB then return " (Color B)" end
+    if address == Spi.ColorC then return " (Color C)" end
+    if address == Spi.ColorD then return " (Color D)" end
+    if address == Spi.CalibrationA then return " (Calibration A)" end
+    if address == Spi.CalibrationB then return " (Calibration B)" end
+    if address == Spi.FailSafeFirmwareA then return " (Fail Safe Firmware A)" end
+    if address == Spi.FailSafeFirmwareB then return " (Fail Safe Firmware B)" end
+    if address == Spi.FirmwareDsph then return " (Firmware DSPH)" end
+    if address == Spi.PairingInfo then return " (Pairing Info)" end
+    if address == Spi.ConsoleMacA then return " (Console MAC A)" end
+    if address == Spi.ConsoleMacB then return " (Console MAC B)" end
+    if address == Spi.LtkA then return " (LTK A)" end
+    if address == Spi.LtkB then return " (LTK B)" end
+    if address == Spi.CalibrationMotion then return " (User Motion calibration)" end
+    if address == Spi.CalibrationJoystickL then return " (User Joystick L calibration)" end
+    if address == Spi.CalibrationJoystickR then return " (User Joystick R calibration)" end
+    if address == Spi.ShipmentFlagA then return " (SpiShipmentFlagA)" end
+    if address == Spi.ShipmentFlagB then return " (SpiShipmentFlagB)" end
     return " (Unknown)"
 end
 
