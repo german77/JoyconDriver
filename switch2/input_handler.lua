@@ -3,7 +3,28 @@ cmn = require "common"
 switch2hid_protocol = Proto("sw2_hid",  "Nintendo Switch 2 HID")
 switch2hidble_protocol = Proto("sw2_hid_ble",  "Nintendo Switch 2 HID BLE")
 
-local inputType =          ProtoField.uint8("sw2_hid.inputType",          "InputType",          base.HEX)
+usb_payload = Field.new("usbll.data")
+
+-- Input report types
+local InputReport = {
+Null =     0x00, -- Empty no data defined
+Report02 = 0x02, -- Unknown
+Left =     0x07, -- 4ms updates, status, button, sticks, triggers and motion
+Right =    0x08, -- 4ms updates, status, button, sticks, triggers and motion
+Pro =      0x09, -- 4ms updates, status, button, sticks, triggers and motion
+Gc =       0x0a -- 4ms updates, status, button, sticks, triggers and motion
+}
+
+local InputReportNames = {
+[InputReport.Null] =     "NullInputReport",
+[InputReport.Report02] = "InputReport02",
+[InputReport.Left] =     "LeftInputReport",
+[InputReport.Right] =    "RightInputReport",
+[InputReport.Pro] =      "ProInputReport",
+[InputReport.Gc] =       "GcInputReport"
+}
+
+local inputType =          ProtoField.uint8("sw2_hid.inputType",          "InputType",          base.HEX, InputReportNames)
 local packetId =           ProtoField.uint8("sw2_hid.packetId",           "PacketId",           base.HEX)
 local status =             ProtoField.uint8("sw2_hid.status",             "Status",             base.HEX)
 local buttons =            ProtoField.uint8("sw2_hid.buttons",            "Buttons",            base.HEX)
@@ -19,15 +40,9 @@ local imuSample =          ProtoField.uint16("sw2_hid.imuSample",         "ImuSa
 local motion =             ProtoField.bytes("sw2_hid.motion",             "Motion",             base.SPACE)
 
 switch2hid_protocol.fields = {inputType, packetId, status, buttons, leftStick, rightStick, vibrationCode, leftAnalogTrigger, rightAnalogTrigger,
-                              imuLength, imuSample, motion}
+                              imuLength, imuSample, motion, mouseX, mouseY}
 
--- Input report types
-local NullInputReport =  0x00 -- Empty no data defined
-local InputReport02 =    0x02 -- Unknown
-local LeftInputReport =  0x07 -- 4ms updates, status, button, sticks, triggers and motion
-local RightInputReport = 0x08 -- 4ms updates, status, button, sticks, triggers and motion
-local ProInputReport =   0x09 -- 4ms updates, status, button, sticks, triggers and motion
-local GcInputReport =    0x0a -- 4ms updates, status, button, sticks, triggers and motion
+
 
 -- Buttons
 local B_BUTTON_BIT =       0x000001
@@ -282,7 +297,7 @@ local function parse_wireless_input_report(buffer, pinfo, tree)
     pinfo.cols.info = info
 end
 
-function switch2hid_protocol.dissector(buffer, pinfo, tree)
+function switch2hid_protocol_dissector(buffer, pinfo, tree)
     length = buffer:len()
     if length == 0 then return end
 
@@ -293,12 +308,23 @@ function switch2hid_protocol.dissector(buffer, pinfo, tree)
 
     subtree:add_le(inputType, input_type_value)
 
-    if     input_type_value:le_uint() == NullInputReport then  pinfo.cols.info = "Empty input report"
-    elseif input_type_value:le_uint() == LeftInputReport then  parse_left_input_report(buffer, pinfo, subtree)
-    elseif input_type_value:le_uint() == RightInputReport then parse_right_input_report(buffer, pinfo, subtree)
-    elseif input_type_value:le_uint() == ProInputReport then   parse_input_report(buffer, pinfo, subtree)
-    elseif input_type_value:le_uint() == GcInputReport then    parse_input_report(buffer, pinfo, subtree)
+    if     input_type_value:le_uint() == InputReport.Null then  pinfo.cols.info = "Empty input report"
+    elseif input_type_value:le_uint() == InputReport.Left then  parse_left_input_report(buffer, pinfo, subtree)
+    elseif input_type_value:le_uint() == InputReport.Right then parse_right_input_report(buffer, pinfo, subtree)
+    elseif input_type_value:le_uint() == InputReport.Pro then   parse_input_report(buffer, pinfo, subtree)
+    elseif input_type_value:le_uint() == InputReport.Gc then    parse_input_report(buffer, pinfo, subtree)
     else pinfo.cols.info = "Unknown input report type " .. input_type_value end
+end
+
+function switch2hid_protocol.dissector(buffer, pinfo, tree)
+    payload = { usb_payload() }
+    if #payload <= 0 then return end
+
+    for k, field in pairs(payload) do
+        local payload_buffer = field.range:bytes():tvb("Payload")
+        if buffer:len() < 8 then return end
+        switch2hid_protocol_dissector(payload_buffer, pinfo, tree)
+    end
 end
 
 function switch2hidble_protocol.dissector(buffer, pinfo, tree)
@@ -312,5 +338,6 @@ function switch2hidble_protocol.dissector(buffer, pinfo, tree)
     parse_wireless_input_report(buffer, pinfo, subtree)
 end
 
+--register_postdissector(switch2hid_protocol)
 DissectorTable.get("usb.interrupt"):add(0x03, switch2hid_protocol)
 DissectorTable.get("btatt.handle"):add(0x000e, switch2hidble_protocol) -- BLE Simple input report

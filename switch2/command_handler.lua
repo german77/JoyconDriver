@@ -89,7 +89,7 @@ local Spi = {
     Unknown12000 =         0x012000, -- 0x2 bytes, Unknown 0xBEEF or 0xFFFF
     DeviceInfo =           0x013000, -- 0x40 bytes
     Unknown13000 =         0x013000, -- 0x2 bytes, 0x0100
-    SerialNumber =         0x013002, -- 0xe bytes, HBW, HEJ, HEW
+    SerialNumber =         0x013002, -- 0xe bytes, HBW, HEJ, HEW, HCW
     VendorId =             0x013012, -- 0x2 bytes
     ProductId =            0x013014, -- 0x2 bytes
     Unknown13016 =         0x013016, -- 0x3 bytes, 0x010601
@@ -97,11 +97,13 @@ local Spi = {
     ColorB =               0x01301c, -- 0x3 bytes RGB
     ColorC =               0x01301f, -- 0x3 bytes RGB
     ColorD =               0x013022, -- 0x3 bytes RGB
-    Unknown13040 =         0x013040, -- 0x10 bytes
+    Unknown13040 =         0x013040, -- 0x10 bytes, Factory magnetometer calibration?
     Unknown13060 =         0x013060, -- 0x20 bytes
     CalibrationA =         0x013080, -- 0x40 bytes
+    FactoryCalJoystickA =  0x0130A8, -- 0xb bytes, Left/Right joycon, Left pro/gc controller
     CalibrationB =         0x0130C0, -- 0x40 bytes
-    Unknown13100 =         0x013100, -- 0x18 bytes
+    FactoryCalJoystickB =  0x0130E8, -- 0xb bytes, Right pro/gc controller
+    Unknown13100 =         0x013100, -- 0x18 bytes, Factory motion calibration?
     Unknown13140 =         0x013140, -- 0x9 bytes
     Unknown13e00 =         0x013e00, -- 0x20 bytes, serial like number
     Unknown13e20 =         0x013e20, -- 0x4 bytes, 0x01020202
@@ -123,9 +125,9 @@ local Spi = {
     Unknown1fb00e =        0x1fb00e, -- 0x2 bytes
     Unknown1fb042 =        0x1fb042, -- 0x1c bytes
     Unknown1fb070 =        0x1fb070, -- 0x12 bytes
-    CalibrationMotion =    0x1fc000, -- 0x40 bytes, 0xFF...FF. no calibration
-    CalibrationJoystickL = 0x1fc040, -- 0xb bytes, 0xFF...FF. no calibration
-    CalibrationJoystickR = 0x1fc060, -- 0xb bytes, 0xFF...FF no calibration
+    UserCalMotion =        0x1fc000, -- 0x40 bytes, 0xFF...FF. no calibration
+    UserCalJoystickL =     0x1fc040, -- 0xb bytes, 0xFF...FF. no calibration
+    UserCalJoystickR =     0x1fc060, -- 0xb bytes, 0xFF...FF no calibration
     ShipmentFlagA =        0x1fd000, -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
     ShipmentFlagB =        0x1fd010, -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
     Unknown1fe000 =        0x1fe000, -- 0x100 bytes
@@ -257,9 +259,11 @@ local function parse_spi_address(address)
     if address == Spi.ConsoleMacB then return " (Console MAC B)" end
     if address == Spi.LtkA then return " (LTK A)" end
     if address == Spi.LtkB then return " (LTK B)" end
-    if address == Spi.CalibrationMotion then return " (User Motion calibration)" end
-    if address == Spi.CalibrationJoystickL then return " (User Joystick L calibration)" end
-    if address == Spi.CalibrationJoystickR then return " (User Joystick R calibration)" end
+    if address == Spi.FactoryCalJoystickL then return " (Factory Joystick L calibration)" end
+    if address == Spi.FactoryCalJoystickR then return " (Factory Joystick R calibration)" end
+    if address == Spi.UserCalMotion then return " (User Motion calibration)" end
+    if address == Spi.UserCalJoystickL then return " (User Joystick L calibration)" end
+    if address == Spi.UserCalJoystickR then return " (User Joystick R calibration)" end
     if address == Spi.ShipmentFlagA then return " (SpiShipmentFlagA)" end
     if address == Spi.ShipmentFlagB then return " (SpiShipmentFlagB)" end
     return " (Unknown)"
