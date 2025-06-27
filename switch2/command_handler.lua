@@ -40,7 +40,7 @@ local Spi = {
     Unknown12000 =         0x012000, -- 0x2 bytes, Unknown 0xBEEF or 0xFFFF
     DeviceInfo =           0x013000, -- 0x40 bytes
     Unknown13000 =         0x013000, -- 0x2 bytes, 0x0100
-    SerialNumber =         0x013002, -- 0xe bytes, HBW, HEJ, HEW, HCW
+    SerialNumber =         0x013002, -- 0xe bytes, HBW, HEJ, HEW, HCW, HHW, HHJ
     VendorId =             0x013012, -- 0x2 bytes
     ProductId =            0x013014, -- 0x2 bytes
     Unknown13016 =         0x013016, -- 0x3 bytes, 0x010601
@@ -49,13 +49,13 @@ local Spi = {
     ColorC =               0x01301f, -- 0x3 bytes RGB
     ColorD =               0x013022, -- 0x3 bytes RGB
     Unknown13040 =         0x013040, -- 0x10 bytes, Factory magnetometer calibration?
-    Unknown13060 =         0x013060, -- 0x20 bytes
+    Unknown13060 =         0x013060, -- 0x20 bytes, Only present in joycons
     CalibrationA =         0x013080, -- 0x40 bytes
     FactoryCalJoystickA =  0x0130A8, -- 0xb bytes, Left/Right joycon, Left pro/gc controller
     CalibrationB =         0x0130C0, -- 0x40 bytes
     FactoryCalJoystickB =  0x0130E8, -- 0xb bytes, Right pro/gc controller
     Unknown13100 =         0x013100, -- 0x18 bytes, Factory motion calibration?
-    Unknown13140 =         0x013140, -- 0x9 bytes
+    Unknown13140 =         0x013140, -- 0x9 bytes, Only present in joycons and GC
     Unknown13e00 =         0x013e00, -- 0x20 bytes, serial like number
     Unknown13e20 =         0x013e20, -- 0x4 bytes, 0x01020202
     Unknown13e30 =         0x013e30, -- 0xa bytes, 0x03020401050206020702
@@ -143,6 +143,7 @@ local SpiCalibrationMagic = 0xb2a1 -- If present user calibration data is set
 
 -- Vibration samples
 local VibrationSample = {
+    None =        0x00, -- no sound
     Buzz =        0x01, -- 1s buzz
     Find =        0x02, -- Find controller. 1s high pich buzz followed by a beep beep
     Connect =     0x03, -- Connect controller. Button click sound
@@ -153,6 +154,7 @@ local VibrationSample = {
 }
 
 local VibrationSampleNames = {
+    [VibrationSample.None] =        "None",
     [VibrationSample.Buzz] =        "Buzz",
     [VibrationSample.Find] =        "Find",
     [VibrationSample.Connect] =     "Connect",
@@ -178,6 +180,7 @@ local ReportType = {
     Mcu =          0x01, -- MCU commands. NFC read/write
     Spi =          0x02, -- SPI commands. Read
     Init =         0x03, -- Unknown, First command with console serial
+    Report06 =     0x06, -- Unknown
     Report07 =     0x07, -- Unknown
     Report08 =     0x08, -- Unknown
     PlayerLights = 0x09, -- Controller leds. Write
@@ -247,14 +250,16 @@ local VibrationCommand08 =  0x08 -- Unknown
 local ImuDisable =   0x02 -- Unknown, no motion output after this command
 local ImuCommand03 = 0x03 -- Unknown
 local ImuEnable =    0x04 -- Unknown, motion output after this command
+local ImuCommand06 = 0x06 -- Unknown
 
 -- Firmware commands
 local FirmwareCommand01 =  0x01 -- Unknown. Init?
 local FirmwareCommand02 =  0x02 -- Unknown
 local FirmwareProperties = 0x03 -- Contains info like the full FW size
 local FirmwareData =       0x04 -- Sends the firmware data in 0x4c chunks
-local FirmwareCommand04 =  0x05 -- Unknown
-local FirmwareCommand05 =  0x06 -- Unknown. Finalize?
+local FirmwareCommand05 =  0x05 -- Unknown
+local FirmwareCommand06 =  0x06 -- Unknown. Finalize?
+local FirmwareCommand07 =  0x07 -- Unknown
 
 -- 10 commands
 local Report10Command01 = 0x01 -- Unknown
@@ -530,7 +535,7 @@ local function parse_init_command(buffer, pinfo, tree, command_value)
     local command_text = " (Init unknown)"
 
     if     command_value:le_uint() == InitCommand0d then command_text = parse_init_0d(buffer, pinfo, tree)
-    else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. cmn.getBytes(buffer) end
+    else pinfo.cols.info = "Request Init(0x"..command_value..") ->".. cmn.getBytes(buffer) end
 
     tree:add_le(command, command_value):append_text(command_text)
 end
@@ -579,7 +584,7 @@ local function parse_imu_command(buffer, pinfo, tree, command_value, command_len
         pinfo.cols.info = "Request IMU: Enable motion"
         command_text = " (IMU enable motion)"
     else
-        pinfo.cols.info = "Request IMU: unknown"
+        pinfo.cols.info = "Request IMU(0x"..command_value..") ->".. cmn.getBytes(buffer)
     end
 
     tree:add_le(command, command_value):append_text(command_text)
@@ -815,6 +820,15 @@ local function parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
     tree:add_le(command, command_value):append_text(command_text)
 end
 
+local function parse_init_reply(buffer, pinfo, tree, command_value, result_value)
+    local command_text = " (Init unknown)"
+    local result_text = ResultCodeNames[result_value:le_uint()]
+
+    pinfo.cols.info = "Reply   Init(0x"..command_value.."): " .. result_text .. " ->" .. cmn.getBytes(buffer(8, buffer:len()-8))
+
+    tree:add_le(command, command_value):append_text(command_text)
+end
+
 local function parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (Player lights unknown)"
     local result_text = ResultCodeNames[result_value:le_uint()]
@@ -844,7 +858,7 @@ local function parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (IMU unknown)"
     local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   IMU: " .. result_text
+    pinfo.cols.info = "Reply   IMU(0x"..command_value.."): " .. result_text .. " ->" .. cmn.getBytes(buffer(8, buffer:len()-8))
 
     if     command_value:le_uint() == ImuDisable then command_text = " (IMU disable motion)"
     elseif command_value:le_uint() == ImuEnable then  command_text = " (IMU enable motion)" end
@@ -899,6 +913,7 @@ local function parse_reply(buffer, pinfo, tree)
 
     if     report_type_value:le_uint() == ReportType.Mcu then          parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.Spi then          parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.Init then         parse_init_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.PlayerLights then parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.Vibration then    parse_vibration_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.Imu then          parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
@@ -950,7 +965,7 @@ function switch2_protocol.dissector(buffer, pinfo, tree)
 end
 
 function switch2ble_protocol.dissector(buffer, pinfo, tree)
-    if buffer:len() == 0 then return end
+    if buffer:len() < 8 then return end
 
     pinfo.cols.protocol = switch2_protocol.name
 
@@ -962,12 +977,12 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
 
     if report_mode_value:le_uint() == 0 then
         parse_vibration(payload_buffer, pinfo, subtree)
-        if payload_buffer(0x6, 1):le_uint() == Request then
-            local command_buffer = payload_buffer(0x5, payload_buffer:len() - 0x5):bytes():tvb("Command payload")
-            report_mode_value = payload_buffer(0x6, 1)
+        if payload_buffer(0x12, 1):le_uint() == ReportMode.Request then
+            local command_buffer = payload_buffer(0x11, payload_buffer:len() - 0x11):bytes():tvb("Command payload")
+            report_mode_value = payload_buffer(0x12, 1)
             report_mode_text = " (GC Vibration + Request)"
             parse_request(command_buffer, pinfo, subtree)
-        elseif payload_buffer(0x22, 1):le_uint() == Request then
+        elseif payload_buffer(0x22, 1):le_uint() == ReportMode.Request then
             local command_buffer = payload_buffer(0x21, payload_buffer:len() - 0x21):bytes():tvb("Command payload")
             report_mode_value = payload_buffer(0x21, 1)
             report_mode_text = " (Vibration + Request)"
@@ -976,10 +991,10 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
     elseif bit.band(report_mode_value:le_uint(), 0xf0) == 0x50 then
         parse_vibration(payload_buffer, pinfo, subtree)
         report_mode_text = " (Vibration)"
-    elseif report_mode_value:le_uint() == ReportMode.Reply then report_mode_text = parse_reply(payload_buffer, pinfo, subtree)
-    elseif report_mode_value:le_uint() == ReportMode.Request then report_mode_text = parse_request(payload_buffer, pinfo, subtree) end
+    elseif report_mode_value:le_uint() == ReportMode.Reply then parse_reply(payload_buffer, pinfo, subtree)
+    elseif report_mode_value:le_uint() == ReportMode.Request then parse_request(payload_buffer, pinfo, subtree) end
 
-    subtree:add_le(reportMode,report_mode_value):append_text(report_mode_text)
+    subtree:add_le(reportMode,report_mode_value)
 end
 
 DissectorTable.get("usb.bulk"):add(0xff, switch2_protocol)

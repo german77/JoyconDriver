@@ -12,7 +12,7 @@ local InputReport = {
     Left =     0x07, -- 4ms updates, status, button, sticks, triggers and motion
     Right =    0x08, -- 4ms updates, status, button, sticks, triggers and motion
     Pro =      0x09, -- 4ms updates, status, button, sticks, triggers and motion
-    Gc =       0x0a -- 4ms updates, status, button, sticks, triggers and motion
+    Gc =       0x0a, -- 4ms updates, status, button, sticks, triggers and motion
 }
 
 local InputReportNames = {
@@ -297,6 +297,41 @@ local function parse_wireless_input_report(buffer, pinfo, tree)
     pinfo.cols.info = info
 end
 
+local function parse_wireless_input_report2(buffer, pinfo, tree)
+    local packet_id_value =      buffer(0, 1)
+    local status_value =         buffer(1, 1)
+    local buttons_value =        buffer(2, 2)
+    local stick_l_value =        buffer(5, 3)
+    local vibration_code_value = buffer(8, 1)
+    local mouse_x_value =        buffer(9, 2)
+    local mouse_y_value =        buffer(11, 2)
+    local imu_length_value =     buffer(15, 1)
+    local motion_buffer_value =  buffer(16, imu_length_value:le_uint())
+    local motion_buffer = motion_buffer_value:bytes():tvb("Motion buffer")
+
+    local buttons_text = parse_buttons(buttons_value:le_uint())
+    local stick_l_text = parse_left_stick(stick_l_value:bytes())
+
+    tree:add_le(packetId, packet_id_value)
+    tree:add_le(status, status_value)
+    tree:add_le(buttons, buttons_value):append_text(buttons_text)
+    tree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
+    tree:add_le(vibrationCode, vibration_code_value)
+    tree:add_le(mouseX, mouse_x_value)
+    tree:add_le(mouseY, mouse_y_value)
+    tree:add_le(imuLength, imu_length_value)
+
+    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text
+    info = info .. " mouse (0x" .. mouse_x_value .. ", " .. mouse_y_value .. ")"
+
+    if imu_length_value:le_uint() > 0 then
+        tree:add_le(motion, motion_buffer_value)
+        info = info .. parse_motion(motion_buffer, tree)
+    end
+
+    pinfo.cols.info = info
+end
+
 function switch2hid_protocol_dissector(buffer, pinfo, tree)
     length = buffer:len()
     if length == 0 then return end
@@ -332,10 +367,13 @@ function switch2hidble_protocol.dissector(buffer, pinfo, tree)
     if length == 0 then return end
 
     pinfo.cols.protocol = switch2hid_protocol.name
+    local payload_buffer = buffer:bytes():tvb("Payload")
 
-    local subtree = tree:add(switch2hid_protocol, buffer(), "Switch2 HID BLE Data")
+    local subtree = tree:add(switch2hid_protocol, payload_buffer(), "Switch2 HID BLE Data")
 
-    parse_wireless_input_report(buffer, pinfo, subtree)
+    -- TODO: Find how to spot which format is using
+    --parse_wireless_input_report(payload_buffer, pinfo, subtree)
+    parse_wireless_input_report2(payload_buffer, pinfo, subtree)
 end
 
 --register_postdissector(switch2hid_protocol)
