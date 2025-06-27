@@ -77,8 +77,8 @@ local Spi = {
     Unknown1fb042 =        0x1fb042, -- 0x1c bytes
     Unknown1fb070 =        0x1fb070, -- 0x12 bytes
     UserCalMotion =        0x1fc000, -- 0x40 bytes, 0xFF...FF. no calibration
-    UserCalJoystickL =     0x1fc040, -- 0xb bytes, 0xFF...FF. no calibration
-    UserCalJoystickR =     0x1fc060, -- 0xb bytes, 0xFF...FF no calibration
+    UserCalJoystickA =     0x1fc040, -- 0xb bytes, 0xFF...FF. no calibration, Left/Right joycon, Left pro/gc controller
+    UserCalJoystickB =     0x1fc060, -- 0xb bytes, 0xFF...FF no calibration, Right pro/gc controller
     ShipmentFlagA =        0x1fd000, -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
     ShipmentFlagB =        0x1fd010, -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
     Unknown1fe000 =        0x1fe000, -- 0x100 bytes
@@ -129,27 +129,38 @@ local SpiNames = {
     [Spi.Unknown1fb042] = "Unknown 0x1fb042",
     [Spi.Unknown1fb070] = "Unknown 0x1fb070",
     [Spi.UserCalMotion] = "User Motion calibration",
-    [Spi.UserCalJoystickL] = "User Joystick L calibration",
-    [Spi.UserCalJoystickR] = "User Joystick R calibration",
+    [Spi.UserCalJoystickA] = "User Joystick A calibration",
+    [Spi.UserCalJoystickB] = "User Joystick B calibration",
     [Spi.ShipmentFlagA] = "Shipment Flag A",
     [Spi.ShipmentFlagB] = "Shipment Flag B",
     [Spi.Unknown1fe000] = "Unknown 0x1fe000",
     [Spi.Unknown1ff000] = "Unknown 0x1ff000",
     [Spi.Unknown1ff400] = "Unknown 0x1ff400",
-
 }
 
 -- SPI magic values
 local SpiCalibrationMagic = 0xb2a1 -- If present user calibration data is set
 
 -- Vibration samples
-local VibrationSampleBuzz =        0x01 -- 1s buzz
-local VibrationSampleFind =        0x02 -- Find controller. 1s high pich buzz followed by a beep beep
-local VibrationSampleConnect =     0x03 -- Connect controller. Button click sound
-local VibrationSampleParing =      0x04 -- Pairing sound
-local VibrationSampleStrongThunk = 0x05 -- Change order?
-local VibrationSampleDun =         0x06 -- Screen recording?
-local VibrationSampleDing =        0x07 -- Screen recording?
+local VibrationSample = {
+    Buzz =        0x01, -- 1s buzz
+    Find =        0x02, -- Find controller. 1s high pich buzz followed by a beep beep
+    Connect =     0x03, -- Connect controller. Button click sound
+    Paring =      0x04, -- Pairing sound
+    StrongThunk = 0x05, -- Change order?
+    Dun =         0x06, -- Screen recording?
+    Ding =        0x07, -- Screen recording?
+}
+
+local VibrationSampleNames = {
+    [VibrationSample.Buzz] =        "Buzz",
+    [VibrationSample.Find] =        "Find",
+    [VibrationSample.Connect] =     "Connect",
+    [VibrationSample.Paring] =      "Paring",
+    [VibrationSample.StrongThunk] = "StrongThunk",
+    [VibrationSample.Dun] =         "Dun",
+    [VibrationSample.Ding] =        "Ding",
+}
 
 -- Result codes
 local ResultCode = {
@@ -216,7 +227,7 @@ local SpiWrite = 0x05 -- Write up to 0x40 bytes?
 local InitCommand07 = 0x07 -- Unknown. Set final LTK key?
 local InitCommand0a = 0x0a -- Unknown
 local InitCommand0c = 0x0c -- Unknown
-local InitCommand0d = 0x0d -- Unknown
+local InitCommand0d = 0x0d -- Unknown. Has console address
 
 -- 07 commands
 local Report07Command01 = 0x01 -- Unknown
@@ -272,7 +283,7 @@ local result =        ProtoField.uint8("switch2.result",        "Result",       
 -- vibration
 local vibrationPacketId = ProtoField.uint8("switch2.vibrationPacketId", "VibrationPacketId", base.HEX)
 local vibrationEnabled =  ProtoField.bool("switch2.vibrationEnabled",   "VibrationEnabled")
-local vibrationSample =  ProtoField.uint8("switch2.vibrationSample",   "vibrationSample", base.HEX)
+local vibrationSample =  ProtoField.uint8("switch2.vibrationSample",   "vibrationSample", base.HEX, VibrationSampleNames)
 -- spi
 local spiLength =  ProtoField.uint8("switch2.spiLength",  "SpiLength",  base.DEC)
 local spiCommand = ProtoField.uint8("switch2.spiCommand", "SpiCommand", base.HEX)
@@ -498,6 +509,32 @@ local function parse_spi_command(buffer, pinfo, tree, command_value)
     tree:add_le(command, command_value):append_text(command_text)
 end
 
+local function parse_init_0d(buffer, pinfo, tree)
+    local entries_value = buffer(0,1)
+    local address_text = ""
+
+    tree:add_le(pairingEntries, entries_value)
+
+    for i=0,entries_value:le_uint() -1 do
+        local address_value = buffer(2+(i*6),6)
+        address_text = address_text .. cmn.getBytes(address_value)
+        tree:add_le(pairingAddress, address_value)
+    end
+
+    pinfo.cols.info = "Request Init(0x0d): address"..address_text
+
+    return " (Init 0x0d)"
+end
+
+local function parse_init_command(buffer, pinfo, tree, command_value)
+    local command_text = " (Init unknown)"
+
+    if     command_value:le_uint() == InitCommand0d then command_text = parse_init_0d(buffer, pinfo, tree)
+    else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. cmn.getBytes(buffer) end
+
+    tree:add_le(command, command_value):append_text(command_text)
+end
+
 local function parse_player_lights_command(buffer, pinfo, tree, command_value, command_length_value)
     local command_text = " (Player lights unknown)"
     local led_pattern_value = buffer(0, 1)
@@ -515,11 +552,10 @@ end
 
 local function parse_vibration_play_sample(buffer, pinfo, tree)
     local vibration_sample_value = buffer(0, 1)
-    local vibration_sample_text = parse_vibration_sample(vibration_sample_value:le_uint())
 
-    pinfo.cols.info = "Request Vibration Play sample:" .. vibration_sample_text
+    pinfo.cols.info = "Request Vibration Play sample: " .. VibrationSampleNames[vibration_sample_value:le_uint()]
 
-    tree:add_le(vibrationSample, vibration_sample_value):append_text(vibration_sample_text)
+    tree:add_le(vibrationSample, vibration_sample_value)
 
     return " (Vibration Play sample)"
 end
@@ -618,6 +654,7 @@ local function parse_request(buffer, pinfo, tree)
 
     if     report_type_value:le_uint() == ReportType.Mcu then          parse_mcu_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.Spi then          parse_spi_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.Init then         parse_init_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.PlayerLights then parse_player_lights_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.Vibration then    parse_vibration_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.Imu then          parse_imu_command(command_buffer, pinfo, tree, command_value, command_length_value)
@@ -796,7 +833,7 @@ local function parse_vibration_reply(buffer, pinfo, tree, command_value, result_
     pinfo.cols.info = "Reply   Vibration(0x"..command_value.."): " .. result_text
 
     if command_value:le_uint() == VibrationPlaySample then
-        pinfo.cols.info = "Reply   Vibration Play sample:" .. result_text
+        pinfo.cols.info = "Reply   Vibration Play sample: " .. result_text
         command_text = " (Vibration Play sample)"
     end
 
