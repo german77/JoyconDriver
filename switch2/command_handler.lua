@@ -3,65 +3,16 @@ cmn = require "common"
 switch2_protocol = Proto("switch2", "Nintendo Switch 2 controller Protocol")
 switch2ble_protocol = Proto("switch2_ble", "Nintendo Switch 2 controller Protocol BLE")
 
-local reportType =    ProtoField.uint8("switch2.reportType",    "ReportType",    base.HEX)
-local reportMode =    ProtoField.uint8("switch2.reportMode",    "ReportMode",    base.HEX)
-local command =       ProtoField.uint8("switch2.command",       "Command",       base.HEX)
-local commandLength = ProtoField.uint8("switch2.commandLength", "CommandLength", base.HEX)
-local commandBuffer = ProtoField.bytes("switch2.commandBuffer", "CommandBuffer", base.NONE)
-local result =        ProtoField.uint8("switch2.result",        "Result",        base.HEX)
--- vibration
-local vibrationPacketId = ProtoField.uint8("switch2.vibrationPacketId", "VibrationPacketId", base.HEX)
-local vibrationEnabled =  ProtoField.bool("switch2.vibrationEnabled",   "VibrationEnabled")
-local vibrationSample =  ProtoField.uint8("switch2.vibrationSample",   "vibrationSample", base.HEX)
--- spi
-local spiLength =  ProtoField.uint8("switch2.spiLength",  "SpiLength",  base.DEC)
-local spiCommand = ProtoField.uint8("switch2.spiCommand", "SpiCommand", base.HEX)
-local spiAddress = ProtoField.uint8("switch2.spiAddress", "SpiAddress", base.HEX)
-local spiData =    ProtoField.bytes("switch2.spiData",    "SpiData",    base.NONE)
-local spiMagic =   ProtoField.uint16("switch2.spiMagic",  "SpiMagic",   base.HEX)
-local spiMax =     ProtoField.uint16("switch2.spiMax",    "SpiMax",     base.HEX)
-local spiCenter =  ProtoField.uint16("switch2.spiCenter", "SpiCenter",  base.HEX)
-local spiMin =     ProtoField.uint16("switch2.spiMin",    "SpiMin",     base.HEX)
--- led
-local ledPattern = ProtoField.uint8("switch2.ledPattern", "LedPattern", base.HEX)
--- pairing
-local pairingBuffer =  ProtoField.bytes("switch2.pairingBuffer",  "PairingBuffer",  base.NONE)
-local pairingEntries = ProtoField.uint8("switch2.pairingEntries", "PairingEntries", base.DEC)
-local pairingAddress = ProtoField.bytes("switch2.pairingAddress", "PairingAddress", base.NONE)
--- firmware
-local firmwareLength = ProtoField.uint8("switch2.firmwareLength", "FirmwareLength", base.DEC)
-local firmwareData =   ProtoField.bytes("switch2.firmwareData",   "FirmwareData",   base.NONE)
--- mcu
-local mcuBlockCount = ProtoField.uint8("switch2.mcuBlockCount",  "McuBlockCount", base.DEC)
-local mcuReadBlock =  ProtoField.bytes("switch2.mcuReadBlock",   "McuReadBlock",  base.NONE)
-local mcuWriteBlock = ProtoField.string("switch2.mcuWriteBlock", "McuWriteBlock")
-local mcuBlock0Data = ProtoField.bytes("switch2.mcuBlock0Data",  "McuBlock0Data", base.NONE)
-local mcuBlock1Data = ProtoField.bytes("switch2.mcuBlock1Data",  "McuBlock1Data", base.NONE)
-local mcuBlock2Data = ProtoField.bytes("switch2.mcuBlock2Data",  "McuBlock2Data", base.NONE)
-local mcuBlock3Data = ProtoField.bytes("switch2.mcuBlock3Data",  "McuBlock3Data", base.NONE)
-local mcuTagType =    ProtoField.uint8("switch2.mcuTagType",     "McuTagType",    base.DEC)
-local mcuUID =        ProtoField.bytes("switch2.mcuUID",         "McuUID",        base.NONE)
-local mcuUIDLength =  ProtoField.uint8("switch2.mcuUIDLength",   "McuUIDLength",  base.DEC)
-local mcuUnk =        ProtoField.uint8("switch2.mcuUnk",         "McuUnk",        base.HEX)
-local mcuDataOffset = ProtoField.uint16("switch2.mcuDataOffset", "McuDataOffset", base.HEX)
-local mcuDataLength = ProtoField.uint16("switch2.mcuDataLength", "McuDataLength", base.HEX)
-local mcuDataType =   ProtoField.uint8("switch2.mcuDataType",    "McuDataType",   base.HEX)
-local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",     base.NONE)
-
--- Hack to read mcu buffer
-local mcuDataBuffer = {}
-local mcuDataBufferSize = 0
-
-switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, spiMagic,
-                           ledPattern, firmwareLength, firmwareData, mcuBlockCount, pairingBuffer,
-                           mcuReadBlock, mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType,
-                           mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock, spiMax,
-                           spiCenter, spiMin, vibrationPacketId, vibrationEnabled, pairingEntries ,pairingAddress, commandLength,
-                           commandBuffer, vibrationSample}
-
 -- Input report mode
-local Reply =   0x01 -- Reply from controller
-local Request = 0x91 -- Request from console
+local ReportMode = {
+    Reply =   0x01, -- Reply from controller
+    Request = 0x91, -- Request from console
+}
+
+local ReportModeNames = {
+    [ReportMode.Reply] =   "Reply",
+    [ReportMode.Request] = "Request",
+}
 
 -- PID/VID
 local VidNintendo =         0x057e
@@ -132,7 +83,60 @@ local Spi = {
     ShipmentFlagB =        0x1fd010, -- 0x4 bytes, zero if virgin otherwise 0xFFFFFFFF
     Unknown1fe000 =        0x1fe000, -- 0x100 bytes
     Unknown1ff000 =        0x1ff000, -- 0x58 bytes
-    Unknown1ff400 =        0x1ff400 -- 0x490 bytes
+    Unknown1ff400 =        0x1ff400, -- 0x490 bytes
+}
+
+local SpiNames = {
+    [Spi.InitialFirmware] = "Initial Firmware",
+    [Spi.FirmwareFailSafeAddr] = "Firmware Fail Safe Addr",
+    [Spi.Unknown12000] = "Unknown 0x12000",
+    [Spi.DeviceInfo] = "Device Info",
+    [Spi.Unknown13000] = "Unknown 0x13000",
+    [Spi.SerialNumber] = "SerialNumber",
+    [Spi.VendorId] = "Vendor ID",
+    [Spi.ProductId] = "Product ID",
+    [Spi.Unknown13016] = "Unknown 0x13016",
+    [Spi.ColorA] = "Color A",
+    [Spi.ColorB] = "Color B",
+    [Spi.ColorC] = "Color C",
+    [Spi.ColorD] = "Color D",
+    [Spi.Unknown13040] = "Unknown 0x13040",
+    [Spi.Unknown13060] = "Unknown 0x13060",
+    [Spi.CalibrationA] = "Calibration A",
+    [Spi.FactoryCalJoystickA] = "Factory Joystick A calibration",
+    [Spi.CalibrationB] = "Calibration B",
+    [Spi.FactoryCalJoystickB] = "Factory Joystick B calibration",
+    [Spi.Unknown13100] = "Unknown 0x13100",
+    [Spi.Unknown13140] = "Unknown 0x13140",
+    [Spi.Unknown13e00] = "Unknown 0x13e00",
+    [Spi.Unknown13e20] = "Unknown 0x13e20",
+    [Spi.Unknown13e30] = "Unknown 0x13e30",
+    [Spi.Unknown13e60] = "Unknown 0x13e60",
+    [Spi.Unknown13e80] = "Unknown 0x13e80",
+    [Spi.Unknown13efb] = "Unknown 0x13efb",
+    [Spi.FailSafeFirmwareA] = "Fail Safe Firmware A",
+    [Spi.FailSafeFirmwareB] = "Fail Safe Firmware B",
+    [Spi.FirmwareUnknown] = "Firmware Unknown",
+    [Spi.FirmwareDsph] = "Firmware Dsph",
+    [Spi.PairingInfo] = "Pairing Info",
+    [Spi.PairingEntries] = "Pairing Entries",
+    [Spi.ConsoleMacA] = "Console Mac A",
+    [Spi.LtkA] = "Ltk A",
+    [Spi.ConsoleMacB] = "Console Mac B",
+    [Spi.LtkB] = "Ltk B",
+    [Spi.Unknown1fb000] = "Unknown 0x1fb000",
+    [Spi.Unknown1fb00e] = "Unknown 0x1fb00e",
+    [Spi.Unknown1fb042] = "Unknown 0x1fb042",
+    [Spi.Unknown1fb070] = "Unknown 0x1fb070",
+    [Spi.UserCalMotion] = "User Motion calibration",
+    [Spi.UserCalJoystickL] = "User Joystick L calibration",
+    [Spi.UserCalJoystickR] = "User Joystick R calibration",
+    [Spi.ShipmentFlagA] = "Shipment Flag A",
+    [Spi.ShipmentFlagB] = "Shipment Flag B",
+    [Spi.Unknown1fe000] = "Unknown 0x1fe000",
+    [Spi.Unknown1ff000] = "Unknown 0x1ff000",
+    [Spi.Unknown1ff400] = "Unknown 0x1ff400",
+
 }
 
 -- SPI magic values
@@ -148,24 +152,50 @@ local VibrationSampleDun =         0x06 -- Screen recording?
 local VibrationSampleDing =        0x07 -- Screen recording?
 
 -- Result codes
-local ResultAck = 0xf8
-local ResultAckBle = 0x78
+local ResultCode = {
+    Ack =    0xf8, -- Reply from controller
+    AckBle = 0x78, -- Request from console
+}
+
+local ResultCodeNames = {
+    [ResultCode.Ack] =    "ACK",
+    [ResultCode.AckBle] = "ACK",
+}
 
 -- Command report types
-local McuReport =          0x01 -- MCU commands. NFC read/write
-local SpiReport =          0x02 -- SPI commands. Read
-local InitReport =         0x03 -- Unknown, First command with console serial
-local Report07 =           0x07 -- Unknown
-local Report08 =           0x08 -- Unknown
-local PlayerLightsReport = 0x09 -- Controller leds. Write
-local VibrationReport =    0x0a -- Vibration presets
-local ImuReport =          0x0c -- IMU commands. Enable/Disable
-local FirmwareReport =     0x0d -- Firmware update commands
-local Report10 =           0x10 -- Unknown
-local Report11 =           0x11 -- Unknown
-local PairingReport =      0x15 -- Paring data transfers
-local Report16 =           0x16 -- Unknown
-local Report18 =           0x18 -- Unknown
+local ReportType = {
+    Mcu =          0x01, -- MCU commands. NFC read/write
+    Spi =          0x02, -- SPI commands. Read
+    Init =         0x03, -- Unknown, First command with console serial
+    Report07 =     0x07, -- Unknown
+    Report08 =     0x08, -- Unknown
+    PlayerLights = 0x09, -- Controller leds. Write
+    Vibration =    0x0a, -- Vibration presets
+    Imu =          0x0c, -- IMU commands. Enable/Disable
+    Firmware =     0x0d, -- Firmware update commands
+    Report10 =     0x10, -- Unknown
+    Report11 =     0x11, -- Unknown
+    Pairing =      0x15, -- Paring data transfers
+    Report16 =     0x16, -- Unknown
+    Report18 =     0x18, -- Unknown
+}
+
+local ReportTypeNames = {
+    [ReportType.Mcu] =          "Mcu",
+    [ReportType.Spi] =          "Spi",
+    [ReportType.Init] =         "Init",
+    [ReportType.Report07] =     "Report 0x07",
+    [ReportType.Report08] =     "Report 0x08",
+    [ReportType.PlayerLights] = "Player Lights",
+    [ReportType.Vibration] =    "Vibration",
+    [ReportType.Imu] =          "Imu",
+    [ReportType.Firmware] =     "Firmware",
+    [ReportType.Report10] =     "Report 0x10",
+    [ReportType.Report11] =     "Report 0x11",
+    [ReportType.Pairing] =      "Pairing",
+    [ReportType.Report16] =     "Report 0x16",
+    [ReportType.Report18] =     "Report 0x18",
+}
 
 -- MCU commands
 local McuCommand02 =   0x02 -- Unknown
@@ -233,41 +263,61 @@ local Report16Command01 = 0x01 -- Unknown
 -- 18 commands
 local Report18Command01 = 0x01 -- Unknown
 
-local function parse_result(result_value)
-    if result_value == ResultAck then return " (ACK)" end
-    if result_value == ResultAckBle then return " (ACK BLE)" end
-    return " (Unknown)"
-end
+local reportType =    ProtoField.uint8("switch2.reportType",    "ReportType",    base.HEX, ReportTypeNames)
+local reportMode =    ProtoField.uint8("switch2.reportMode",    "ReportMode",    base.HEX, ReportModeNames)
+local command =       ProtoField.uint8("switch2.command",       "Command",       base.HEX)
+local commandLength = ProtoField.uint8("switch2.commandLength", "CommandLength", base.HEX)
+local commandBuffer = ProtoField.bytes("switch2.commandBuffer", "CommandBuffer", base.NONE)
+local result =        ProtoField.uint8("switch2.result",        "Result",        base.HEX, ResultCodeNames)
+-- vibration
+local vibrationPacketId = ProtoField.uint8("switch2.vibrationPacketId", "VibrationPacketId", base.HEX)
+local vibrationEnabled =  ProtoField.bool("switch2.vibrationEnabled",   "VibrationEnabled")
+local vibrationSample =  ProtoField.uint8("switch2.vibrationSample",   "vibrationSample", base.HEX)
+-- spi
+local spiLength =  ProtoField.uint8("switch2.spiLength",  "SpiLength",  base.DEC)
+local spiCommand = ProtoField.uint8("switch2.spiCommand", "SpiCommand", base.HEX)
+local spiAddress = ProtoField.uint32("switch2.spiAddress", "SpiAddress", base.HEX, SpiNames)
+local spiData =    ProtoField.bytes("switch2.spiData",    "SpiData",    base.NONE)
+local spiMagic =   ProtoField.uint16("switch2.spiMagic",  "SpiMagic",   base.HEX)
+local spiMax =     ProtoField.uint16("switch2.spiMax",    "SpiMax",     base.HEX)
+local spiCenter =  ProtoField.uint16("switch2.spiCenter", "SpiCenter",  base.HEX)
+local spiMin =     ProtoField.uint16("switch2.spiMin",    "SpiMin",     base.HEX)
+-- led
+local ledPattern = ProtoField.uint8("switch2.ledPattern", "LedPattern", base.HEX)
+-- pairing
+local pairingBuffer =  ProtoField.bytes("switch2.pairingBuffer",  "PairingBuffer",  base.NONE)
+local pairingEntries = ProtoField.uint8("switch2.pairingEntries", "PairingEntries", base.DEC)
+local pairingAddress = ProtoField.bytes("switch2.pairingAddress", "PairingAddress", base.NONE)
+-- firmware
+local firmwareLength = ProtoField.uint8("switch2.firmwareLength", "FirmwareLength", base.DEC)
+local firmwareData =   ProtoField.bytes("switch2.firmwareData",   "FirmwareData",   base.NONE)
+-- mcu
+local mcuBlockCount = ProtoField.uint8("switch2.mcuBlockCount",  "McuBlockCount", base.DEC)
+local mcuReadBlock =  ProtoField.bytes("switch2.mcuReadBlock",   "McuReadBlock",  base.NONE)
+local mcuWriteBlock = ProtoField.string("switch2.mcuWriteBlock", "McuWriteBlock")
+local mcuBlock0Data = ProtoField.bytes("switch2.mcuBlock0Data",  "McuBlock0Data", base.NONE)
+local mcuBlock1Data = ProtoField.bytes("switch2.mcuBlock1Data",  "McuBlock1Data", base.NONE)
+local mcuBlock2Data = ProtoField.bytes("switch2.mcuBlock2Data",  "McuBlock2Data", base.NONE)
+local mcuBlock3Data = ProtoField.bytes("switch2.mcuBlock3Data",  "McuBlock3Data", base.NONE)
+local mcuTagType =    ProtoField.uint8("switch2.mcuTagType",     "McuTagType",    base.DEC)
+local mcuUID =        ProtoField.bytes("switch2.mcuUID",         "McuUID",        base.NONE)
+local mcuUIDLength =  ProtoField.uint8("switch2.mcuUIDLength",   "McuUIDLength",  base.DEC)
+local mcuUnk =        ProtoField.uint8("switch2.mcuUnk",         "McuUnk",        base.HEX)
+local mcuDataOffset = ProtoField.uint16("switch2.mcuDataOffset", "McuDataOffset", base.HEX)
+local mcuDataLength = ProtoField.uint16("switch2.mcuDataLength", "McuDataLength", base.HEX)
+local mcuDataType =   ProtoField.uint8("switch2.mcuDataType",    "McuDataType",   base.HEX)
+local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",     base.NONE)
 
-local function parse_spi_address(address)
-    if address == Spi.InitialFirmware then return " (Initial Firmware)" end
-    if address == Spi.DeviceInfo then return " (Device info)" end
-    if address == Spi.SerialNumber then return " (Serial Number)" end
-    if address == Spi.VendorId then return " (Vendor ID)" end
-    if address == Spi.ProductId then return " (Product ID)" end
-    if address == Spi.ColorA then return " (Color A)" end
-    if address == Spi.ColorB then return " (Color B)" end
-    if address == Spi.ColorC then return " (Color C)" end
-    if address == Spi.ColorD then return " (Color D)" end
-    if address == Spi.CalibrationA then return " (Calibration A)" end
-    if address == Spi.CalibrationB then return " (Calibration B)" end
-    if address == Spi.FailSafeFirmwareA then return " (Fail Safe Firmware A)" end
-    if address == Spi.FailSafeFirmwareB then return " (Fail Safe Firmware B)" end
-    if address == Spi.FirmwareDsph then return " (Firmware DSPH)" end
-    if address == Spi.PairingInfo then return " (Pairing Info)" end
-    if address == Spi.ConsoleMacA then return " (Console MAC A)" end
-    if address == Spi.ConsoleMacB then return " (Console MAC B)" end
-    if address == Spi.LtkA then return " (LTK A)" end
-    if address == Spi.LtkB then return " (LTK B)" end
-    if address == Spi.FactoryCalJoystickL then return " (Factory Joystick L calibration)" end
-    if address == Spi.FactoryCalJoystickR then return " (Factory Joystick R calibration)" end
-    if address == Spi.UserCalMotion then return " (User Motion calibration)" end
-    if address == Spi.UserCalJoystickL then return " (User Joystick L calibration)" end
-    if address == Spi.UserCalJoystickR then return " (User Joystick R calibration)" end
-    if address == Spi.ShipmentFlagA then return " (SpiShipmentFlagA)" end
-    if address == Spi.ShipmentFlagB then return " (SpiShipmentFlagB)" end
-    return " (Unknown)"
-end
+-- Hack to read mcu buffer
+local mcuDataBuffer = {}
+local mcuDataBufferSize = 0
+
+switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, spiCommand, spiAddress, spiData, spiMagic,
+                           ledPattern, firmwareLength, firmwareData, mcuBlockCount, pairingBuffer,
+                           mcuReadBlock, mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType,
+                           mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock, spiMax,
+                           spiCenter, spiMin, vibrationPacketId, vibrationEnabled, pairingEntries ,pairingAddress, commandLength,
+                           commandBuffer, vibrationSample}
 
 local function parse_vibration_sample(sample)
     if sample == VibrationSampleBuzz then return " (Buzz)" end
@@ -414,8 +464,6 @@ local function parse_mcu_command(buffer, pinfo, tree, command_value, command_len
     else pinfo.cols.info = "Request MCU(0x"..command_value..") ->".. cmn.getBytes(buffer) end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (MCU)"
 end
 
 local function parse_stick(stick_value)
@@ -429,7 +477,6 @@ local function parse_spi_command(buffer, pinfo, tree, command_value)
     local length_value =      buffer(0, 1)
     local sub_command_value = buffer(1, 1)
     local address_value =     buffer(4, 4)
-    local address_text = parse_spi_address(address_value:le_uint())
     local command_text = " (Unknown)"
     -- TODO: Fix SPI parsing
     if command_value:le_uint() == SpiRead then
@@ -447,10 +494,8 @@ local function parse_spi_command(buffer, pinfo, tree, command_value)
 
     tree:add_le(spiLength, length_value)
     tree:add_le(spiCommand, sub_command_value)
-    tree:add_le(spiAddress, address_value):append_text(address_text)
+    tree:add_le(spiAddress, address_value)
     tree:add_le(command, command_value):append_text(command_text)
-    
-    return " (SPI)"
 end
 
 local function parse_player_lights_command(buffer, pinfo, tree, command_value, command_length_value)
@@ -466,8 +511,6 @@ local function parse_player_lights_command(buffer, pinfo, tree, command_value, c
 
     tree:add_le(ledPattern, led_pattern_value)
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (Player lights)"
 end
 
 local function parse_vibration_play_sample(buffer, pinfo, tree)
@@ -488,8 +531,6 @@ local function parse_vibration_command(buffer, pinfo, tree, command_value, comma
     else pinfo.cols.info = "Request Vibration(0x"..command_value..")=" .. cmn.getBytes(buffer) end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (Vibration)"
 end
 
 local function parse_imu_command(buffer, pinfo, tree, command_value, command_length_value)
@@ -506,8 +547,6 @@ local function parse_imu_command(buffer, pinfo, tree, command_value, command_len
     end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (IMU)"
 end
 
 local function parse_firmware_properties(buffer, pinfo, tree)
@@ -538,8 +577,6 @@ local function parse_firmware_command(buffer, pinfo, tree, command_value, comman
     else pinfo.cols.info = "Request Firmware(0x"..command_value..") ->".. cmn.getBytes(buffer) end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (Firmware)"
 end
 
 local function parse_pairing_set_address(buffer, pinfo, tree)
@@ -566,79 +603,74 @@ local function parse_paring_command(buffer, pinfo, tree, command_value, command_
     else pinfo.cols.info = "Request Pairing(" .. command_value .. "): size 0x" .. command_length_value .. " ->" .. cmn.getBytes(buffer) end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (Pairing)"
 end
 
 local function parse_request(buffer, pinfo, tree)
     local report_type_value = buffer(0,1)
-    local report_type_text = " (Unknown)"
     local command_value = buffer(3,1)
     local command_length_value = buffer(5,1)
     local command_buffer_value = buffer(8,command_length_value:le_uint())
     local command_buffer = command_buffer_value:bytes():tvb("Command buffer")
 
+    tree:add_le(reportType, report_type_value)
     tree:add_le(commandLength, command_length_value)
     tree:add_le(commandBuffer, command_buffer_value)
 
-    if     report_type_value:le_uint() == McuReport then          report_type_text = parse_mcu_command(command_buffer, pinfo, tree, command_value, command_length_value)
-    elseif report_type_value:le_uint() == SpiReport then          report_type_text = parse_spi_command(command_buffer, pinfo, tree, command_value, command_length_value)
-    elseif report_type_value:le_uint() == PlayerLightsReport then report_type_text = parse_player_lights_command(command_buffer, pinfo, tree, command_value, command_length_value)
-    elseif report_type_value:le_uint() == VibrationReport then    report_type_text = parse_vibration_command(command_buffer, pinfo, tree, command_value, command_length_value)
-    elseif report_type_value:le_uint() == ImuReport then          report_type_text = parse_imu_command(command_buffer, pinfo, tree, command_value, command_length_value)
-    elseif report_type_value:le_uint() == FirmwareReport then     report_type_text = parse_firmware_command(command_buffer, pinfo, tree, command_value, command_length_value)
-    elseif report_type_value:le_uint() == PairingReport then      report_type_text = parse_paring_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    if     report_type_value:le_uint() == ReportType.Mcu then          parse_mcu_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.Spi then          parse_spi_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.PlayerLights then parse_player_lights_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.Vibration then    parse_vibration_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.Imu then          parse_imu_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.Firmware then     parse_firmware_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.Pairing then      parse_paring_command(command_buffer, pinfo, tree, command_value, command_length_value)
     else
         tree:add_le(command, command_value):append_text(" (0x" .. cmn.hex(report_type_value:le_uint()) .. " unknown)")
         pinfo.cols.info = "Request (0x" .. cmn.hex(report_type_value:le_uint()) .. ", 0x" .. command_value .. ") ->".. cmn.getBytes(command_buffer)
     end
 
-    tree:add_le(reportType, report_type_value):append_text(report_type_text)
-
-    return " (Request)"
 end
 
 
 local function parse_mcu_state_reply(buffer, pinfo, tree, result_value)
     -- TODO: Include the rest of the state data
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
     local uid_length_value = buffer(0x10, 1)
     local uid_value = buffer(0x11, uid_length_value:le_uint())
 
     tree:add_le(mcuUIDLength, uid_length_value)
     tree:add_le(mcuUID, uid_value)
 
-    pinfo.cols.info = "Reply   MCU state:" .. result_text.." uid".. cmn.getBytes(uid_value)
+    pinfo.cols.info = "Reply   MCU state: " .. result_text.." uid".. cmn.getBytes(uid_value)
     return " (MCU state)"
 end
 
 local function parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   MCU read device:" .. result_text
+    pinfo.cols.info = "Reply   MCU read device: " .. result_text
 
     return " (MCU read device)"
 end
 
 local function parse_mcu_write_device_reply(buffer, pinfo, tree, result_value)
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   MCU write device:" .. result_text
+    pinfo.cols.info = "Reply   MCU write device: " .. result_text
 
     return " (MCU write device)"
 end
 
 local function parse_mcu_write_buffer_reply(buffer, pinfo, tree, result_value)
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   MCU write buffer:" .. result_text
+    pinfo.cols.info = "Reply   MCU write buffer: " .. result_text
 
     return " (MCU write buffer)"
 end
 
 local function parse_mcu_nfc_data(buffer, pinfo, tree, result_value)
     -- TODO: Include the rest of the state data
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
     local uid_length_value = buffer(7, 1)
     local uid_value = buffer(8, uid_length_value:le_uint())
     local block_count_value = buffer(0x33, 1)
@@ -687,14 +719,14 @@ local function parse_mcu_nfc_data(buffer, pinfo, tree, result_value)
         tree:add_le(mcuBlock3Data, block_3_value)
     end
 
-    pinfo.cols.info = "Reply   MCU read nfc data:" .. result_text.." uid".. cmn.getBytes(uid_value) .. " blocks " .. cmn.getBytes(blocks_value) .. " ->" ..
+    pinfo.cols.info = "Reply   MCU read nfc data: " .. result_text.." uid".. cmn.getBytes(uid_value) .. " blocks " .. cmn.getBytes(blocks_value) .. " ->" ..
                       cmn.getBytes(block_0_value) .. cmn.getBytes(block_1_value) .. cmn.getBytes(block_2_value) .. cmn.getBytes(block_3_value)
 
     return " (NFC)"
 end
 
 local function parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
     local data_type_value = buffer(8, 1)
     local data_type_text = " (Unknown)"
     local data_length_value = buffer(9, 2)
@@ -702,7 +734,7 @@ local function parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
     local mcu_buffer = buffer_value:bytes():tvb("MCU buffer")
 
     if data_type_value:le_uint() == 0x01 then data_type_text = parse_mcu_nfc_data(mcu_buffer, pinfo, tree, result_value)
-    else pinfo.cols.info = "Reply   MCU read buffer:" .. result_text .. " ->" .. cmn.getBytes(buffer_value) end
+    else pinfo.cols.info = "Reply   MCU read buffer: " .. result_text .. " ->" .. cmn.getBytes(buffer_value) end
 
     tree:add_le(mcuDataLength, data_length_value)
     tree:add_le(mcuBuffer, buffer_value)
@@ -713,29 +745,26 @@ end
 
 local function parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (MCU unknown)"
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
     if command_value:le_uint() == McuState then command_text = parse_mcu_state_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == McuReadDevice then command_text = parse_mcu_read_device_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == McuWireDevice then command_text = parse_mcu_write_device_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == McuReadBuffer then command_text = parse_mcu_write_buffer_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == McuWriteBuffer then command_text = parse_mcu_read_buffer_reply(buffer, pinfo, tree, result_value)
-    else pinfo.cols.info = "Reply   MCU(0x"..command_value.."):" .. result_text.. " ->" .. cmn.getBytes(buffer(8,buffer:len()-8)) end
+    else pinfo.cols.info = "Reply   MCU(0x"..command_value.."): " .. result_text.. " ->" .. cmn.getBytes(buffer(8,buffer:len()-8)) end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (MCU)"
 end
 
 local function parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (SPI unknown)"
     local length_value = buffer(8, 1)
     local address_value = buffer(0xc, 4)
-    local address_text = parse_spi_address(address_value:le_uint())
     local data_value = buffer(0x10, length_value:le_uint())
 
     tree:add_le(spiLength, length_value)
-    tree:add_le(spiAddress, address_value):append_text(address_text)
+    tree:add_le(spiAddress, address_value)
 
     if command_value:le_uint() == SpiRead then
         command_text = " (SPI Read)"
@@ -747,28 +776,24 @@ local function parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
     end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-     return " (SPI)"
 end
 
 local function parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (Player lights unknown)"
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   Player lights:" .. result_text
+    pinfo.cols.info = "Reply   Player lights: " .. result_text
 
     if command_value:le_uint() == PlayerLightsSetLedPattern then command_text = " (Player lights set pattern)" end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (Player lights)"
 end
 
 local function parse_vibration_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (Vibration unknown)"
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   Vibration(0x"..command_value.."):" .. result_text
+    pinfo.cols.info = "Reply   Vibration(0x"..command_value.."): " .. result_text
 
     if command_value:le_uint() == VibrationPlaySample then
         pinfo.cols.info = "Reply   Vibration Play sample:" .. result_text
@@ -776,53 +801,47 @@ local function parse_vibration_reply(buffer, pinfo, tree, command_value, result_
     end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (Vibration)"
 end
 
 local function parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (IMU unknown)"
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   IMU:" .. result_text
+    pinfo.cols.info = "Reply   IMU: " .. result_text
 
     if     command_value:le_uint() == ImuDisable then command_text = " (IMU disable motion)"
     elseif command_value:le_uint() == ImuEnable then  command_text = " (IMU enable motion)" end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (IMU)"
 end
 
 local function parse_firmware_properties_reply(buffer, pinfo, tree, result_value)
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   Firmware data:" .. result_text
+    pinfo.cols.info = "Reply   Firmware data: " .. result_text
     return " (Firmware properties)"
 end
 
 local function parse_firmware_data_reply(buffer, pinfo, tree, result_value)
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   Firmware data:" .. result_text
+    pinfo.cols.info = "Reply   Firmware data: " .. result_text
     return " (Firmware data)"
 end
 
 local function parse_firmware_reply(buffer, pinfo, tree, command_value, result_value)
     local command_text = " (Firmware unknown)"
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
 
     if     command_value:le_uint() == FirmwareProperties then command_text = parse_firmware_properties_reply(buffer, pinfo, tree, result_value)
     elseif command_value:le_uint() == FirmwareData then       command_text = parse_firmware_data_reply(buffer, pinfo, tree, result_value)
-    else pinfo.cols.info = "Reply   Firmware(0x"..command_value.."):" .. result_text end
+    else pinfo.cols.info = "Reply   Firmware(0x"..command_value.."): " .. result_text end
 
     tree:add_le(command, command_value):append_text(command_text)
-
-    return " (Firmware)"
 end
 
 local function parse_pairing_reply(buffer, pinfo, tree, command_value, result_value)
-    local result_text = parse_result(result_value:le_uint())
+    local result_text = ResultCodeNames[result_value:le_uint()]
     local buffer_value = buffer(8, buffer:len()-8)
     local buffer_length = buffer_value:len()
     local pairing_buffer = buffer_value:bytes():tvb("Pairing buffer")
@@ -830,8 +849,7 @@ local function parse_pairing_reply(buffer, pinfo, tree, command_value, result_va
     tree:add_le(pairingBuffer, buffer_value)
     tree:add_le(command, command_value):append_text(" (Pairing unknown)")
 
-    pinfo.cols.info = "Reply   Pairing(" .. command_value .. "):".. result_text .. " size 0x".. cmn.hex(buffer_length) .. " ->" .. cmn.getBytes(buffer_value)
-    return " (Pairing)"
+    pinfo.cols.info = "Reply   Pairing(" .. command_value .. "): ".. result_text .. " size 0x".. cmn.hex(buffer_length) .. " ->" .. cmn.getBytes(buffer_value)
 end
 
 local function parse_reply(buffer, pinfo, tree)
@@ -839,26 +857,22 @@ local function parse_reply(buffer, pinfo, tree)
     local command_value =     buffer(3, 1)
     local result_value =      buffer(5, 1)
 
-    local report_type_text = " (Unknown)"
-    local result_text = parse_result(result_value:le_uint())
+    tree:add_le(reportType, report_type_value)
+    tree:add_le(result, result_value)
 
-    tree:add_le(result, result_value):append_text(result_text)
-
-    if     report_type_value:le_uint() == McuReport then          report_type_text = parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value:le_uint() == SpiReport then          report_type_text = parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value:le_uint() == PlayerLightsReport then report_type_text = parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value:le_uint() == VibrationReport then    report_type_text = parse_vibration_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value:le_uint() == ImuReport then          report_type_text = parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value:le_uint() == FirmwareReport then     report_type_text = parse_firmware_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value:le_uint() == PairingReport then       report_type_text = parse_pairing_reply(buffer, pinfo, tree, command_value, result_value)
+    if     report_type_value:le_uint() == ReportType.Mcu then          parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.Spi then          parse_spi_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.PlayerLights then parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.Vibration then    parse_vibration_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.Imu then          parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.Firmware then     parse_firmware_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.Pairing then      parse_pairing_reply(buffer, pinfo, tree, command_value, result_value)
     else
+        local result_text = ResultCodeNames[result_value:le_uint()]
         tree:add_le(command, command_value):append_text(" (0x" .. cmn.hex(report_type_value:le_uint()) .. " unknown)")
-        pinfo.cols.info = "Reply   (0x" .. cmn.hex(report_type_value:le_uint()) .. ", 0x" .. command_value .. ") ->" .. result_text .. cmn.getBytes(buffer(8, buffer:len()-8))
+        pinfo.cols.info = "Reply   (0x" .. cmn.hex(report_type_value:le_uint()) .. ", 0x" .. command_value .. ") -> " .. result_text .. cmn.getBytes(buffer(8, buffer:len()-8))
     end
 
-    tree:add_le(reportType, report_type_value):append_text(report_type_text)
-
-    return " (Reply)"
 end
 
 local function parse_vibration(buffer, pinfo, tree)
@@ -891,12 +905,11 @@ function switch2_protocol.dissector(buffer, pinfo, tree)
     local subtree = tree:add(switch2_protocol, buffer(), "Switch2 Protocol Data")
 
     local report_mode_value = buffer(1, 1)
-    local report_mode_text = " (Unknown)"
 
-    if     report_mode_value:le_uint() == Reply then   report_mode_text = parse_reply(buffer, pinfo, subtree)
-    elseif report_mode_value:le_uint() == Request then report_mode_text = parse_request(buffer, pinfo, subtree) end
+    if     report_mode_value:le_uint() == ReportMode.Reply then   parse_reply(buffer, pinfo, subtree)
+    elseif report_mode_value:le_uint() == ReportMode.Request then parse_request(buffer, pinfo, subtree) end
 
-    subtree:add_le(reportMode, report_mode_value):append_text(report_mode_text)
+    subtree:add_le(reportMode, report_mode_value)
 end
 
 function switch2ble_protocol.dissector(buffer, pinfo, tree)
@@ -926,8 +939,8 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
     elseif bit.band(report_mode_value:le_uint(), 0xf0) == 0x50 then
         parse_vibration(payload_buffer, pinfo, subtree)
         report_mode_text = " (Vibration)"
-    elseif report_mode_value:le_uint() == Reply then report_mode_text = parse_reply(payload_buffer, pinfo, subtree)
-    elseif report_mode_value:le_uint() == Request then report_mode_text = parse_request(payload_buffer, pinfo, subtree) end
+    elseif report_mode_value:le_uint() == ReportMode.Reply then report_mode_text = parse_reply(payload_buffer, pinfo, subtree)
+    elseif report_mode_value:le_uint() == ReportMode.Request then report_mode_text = parse_request(payload_buffer, pinfo, subtree) end
 
     subtree:add_le(reportMode,report_mode_value):append_text(report_mode_text)
 end

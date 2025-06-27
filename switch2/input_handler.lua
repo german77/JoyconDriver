@@ -7,21 +7,21 @@ usb_payload = Field.new("usbll.data")
 
 -- Input report types
 local InputReport = {
-Null =     0x00, -- Empty no data defined
-Report02 = 0x02, -- Unknown
-Left =     0x07, -- 4ms updates, status, button, sticks, triggers and motion
-Right =    0x08, -- 4ms updates, status, button, sticks, triggers and motion
-Pro =      0x09, -- 4ms updates, status, button, sticks, triggers and motion
-Gc =       0x0a -- 4ms updates, status, button, sticks, triggers and motion
+    Null =     0x00, -- Empty no data defined
+    Report02 = 0x02, -- Unknown
+    Left =     0x07, -- 4ms updates, status, button, sticks, triggers and motion
+    Right =    0x08, -- 4ms updates, status, button, sticks, triggers and motion
+    Pro =      0x09, -- 4ms updates, status, button, sticks, triggers and motion
+    Gc =       0x0a -- 4ms updates, status, button, sticks, triggers and motion
 }
 
 local InputReportNames = {
-[InputReport.Null] =     "NullInputReport",
-[InputReport.Report02] = "InputReport02",
-[InputReport.Left] =     "LeftInputReport",
-[InputReport.Right] =    "RightInputReport",
-[InputReport.Pro] =      "ProInputReport",
-[InputReport.Gc] =       "GcInputReport"
+    [InputReport.Null] =     "Null Input Report",
+    [InputReport.Report02] = "Input Report 02",
+    [InputReport.Left] =     "Left Input Report",
+    [InputReport.Right] =    "Right Input Report",
+    [InputReport.Pro] =      "Pro Input Report",
+    [InputReport.Gc] =       "Gc Input Report"
 }
 
 local inputType =          ProtoField.uint8("sw2_hid.inputType",          "InputType",          base.HEX, InputReportNames)
