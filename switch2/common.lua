@@ -33,8 +33,16 @@ local function getBytes2(buffer, size)
     return buttons_text
 end
 
+local function getSubBuffer(buffer, offset, size)
+    if offset + size > buffer:len() then
+        return buffer(offset, buffer:len()-offset)
+    end
+    return buffer(offset,size)
+end
+
 return {
    hex = hex,
    getBytes = getBytes,
    getBytes2 = getBytes2,
+   getSubBuffer = getSubBuffer,
 }

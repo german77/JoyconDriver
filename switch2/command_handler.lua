@@ -2,6 +2,7 @@ cmn = require "common"
 
 switch2_protocol = Proto("switch2", "Nintendo Switch 2 controller Protocol")
 switch2ble_protocol = Proto("switch2_ble", "Nintendo Switch 2 controller Protocol BLE")
+switch2ble_long_protocol = Proto("switch2_long_ble", "Nintendo Switch 2 controller Protocol BLE long")
 
 -- Input report mode
 local ReportMode = {
@@ -14,6 +15,15 @@ local ReportModeNames = {
     [ReportMode.Request] = "Request",
 }
 
+local LongCommandType = {
+    Head = 0x01, -- First command
+    Body = 0x02, -- Rest of the command data
+}
+
+local LongCommandTypeNames = {
+    [LongCommandType.Head] = "Head",
+    [LongCommandType.Body] = "Body",
+}
 -- PID/VID
 local VidNintendo =         0x057e
 local PidJoyconLeft =       0x2006
@@ -279,12 +289,16 @@ local Report16Command01 = 0x01 -- Unknown
 -- 18 commands
 local Report18Command01 = 0x01 -- Unknown
 
-local reportType =    ProtoField.uint8("switch2.reportType",    "ReportType",    base.HEX, ReportTypeNames)
-local reportMode =    ProtoField.uint8("switch2.reportMode",    "ReportMode",    base.HEX, ReportModeNames)
-local command =       ProtoField.uint8("switch2.command",       "Command",       base.HEX)
-local commandLength = ProtoField.uint8("switch2.commandLength", "CommandLength", base.HEX)
-local commandBuffer = ProtoField.bytes("switch2.commandBuffer", "CommandBuffer", base.NONE)
-local result =        ProtoField.uint8("switch2.result",        "Result",        base.HEX, ResultCodeNames)
+local reportType =    ProtoField.uint8("switch2.reportType",     "ReportType",        base.HEX, ReportTypeNames)
+local reportMode =    ProtoField.uint8("switch2.reportMode",     "ReportMode",        base.HEX, ReportModeNames)
+local command =       ProtoField.uint8("switch2.command",        "Command",           base.HEX)
+local commandFlags =  ProtoField.uint8("switch2.commandFlags",   "CommandFlags",      base.HEX)
+local commandLength = ProtoField.uint8("switch2.commandLength",  "CommandLength",     base.HEX)
+local commandBuffer = ProtoField.bytes("switch2.commandBuffer",  "CommandBuffer",     base.NONE)
+local longCmdType =   ProtoField.uint8("switch2.longCmdType",    "LongCommandType",   base.HEX, LongCommandTypeNames)
+local longCmdId =     ProtoField.uint8("switch2.longCmdId",      "LongCommandId",     base.HEX)
+local longCmdLength = ProtoField.uint8("switch2.longCmdLength",  "LongCommandLength", base.HEX)
+local result =        ProtoField.uint8("switch2.result",         "Result",            base.HEX, ResultCodeNames)
 -- vibration
 local vibrationPacketId = ProtoField.uint8("switch2.vibrationPacketId", "VibrationPacketId", base.HEX)
 local vibrationEnabled =  ProtoField.bool("switch2.vibrationEnabled",   "VibrationEnabled")
@@ -333,7 +347,7 @@ switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, s
                            mcuReadBlock, mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType,
                            mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock, spiMax,
                            spiCenter, spiMin, vibrationPacketId, vibrationEnabled, pairingEntries ,pairingAddress, commandLength,
-                           commandBuffer, vibrationSample}
+                           commandBuffer, vibrationSample, longCmdType, longCmdId, longCmdLength, commandFlags}
 
 local function parse_vibration_sample(sample)
     if sample == VibrationSampleBuzz then return " (Buzz)" end
@@ -600,13 +614,13 @@ local function parse_firmware_properties(buffer, pinfo, tree)
 end
 
 local function parse_firmware_data(buffer, pinfo, tree)
-    local length_value = buffer(0, 1)
-    local data_value = buffer(0x4, length_value:le_uint())
+    local length_value = buffer(0, 2)
+    local data_value = cmn.getSubBuffer(buffer,0x4,length_value:le_uint())
 
     tree:add_le(firmwareLength, length_value)
     tree:add_le(firmwareData, data_value)
 
-    pinfo.cols.info = "Request Firmware data: size 0x"..length_value.."->".. cmn.getBytes(data_value)
+    pinfo.cols.info = "Request Firmware data: size "..length_value:le_uint().." ->".. cmn.getBytes(data_value)
     return " (Firmware data)"
 end
 
@@ -649,11 +663,17 @@ end
 local function parse_request(buffer, pinfo, tree)
     local report_type_value = buffer(0,1)
     local command_value = buffer(3,1)
+    local command_flags_value = buffer(4,1)
     local command_length_value = buffer(5,1)
-    local command_buffer_value = buffer(8,command_length_value:le_uint())
+
+    local command_buffer_value = cmn.getSubBuffer(buffer,8,command_length_value:le_uint())
+    if command_flags_value:le_uint() == 0x10 then
+        command_buffer_value = cmn.getSubBuffer(buffer,8,buffer:len()-8)
+    end
     local command_buffer = command_buffer_value:bytes():tvb("Command buffer")
 
     tree:add_le(reportType, report_type_value)
+    tree:add_le(commandFlags, command_flags_value)
     tree:add_le(commandLength, command_length_value)
     tree:add_le(commandBuffer, command_buffer_value)
 
@@ -997,8 +1017,36 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
     subtree:add_le(reportMode,report_mode_value)
 end
 
+function switch2ble_long_protocol.dissector(buffer, pinfo, tree)
+    if buffer:len() < 8 then return end
+
+    pinfo.cols.protocol = switch2_protocol.name
+
+    local subtree = tree:add(switch2_protocol, buffer(), "Switch2 Protocol BLE Data")
+
+    local long_command_buffer = buffer:bytes():tvb("LongCommand")
+    local long_cmd_type_value = long_command_buffer(0,1)
+    local long_cmd_id_value = long_command_buffer(1,1)
+    local long_cmd_length_value = long_command_buffer(2,1)
+
+    local payload_buffer = long_command_buffer(4,long_cmd_length_value:le_uint()):bytes():tvb("Payload")
+    local report_mode_value = payload_buffer(1, 1)
+
+    subtree:add_le(longCmdType,long_cmd_type_value)
+    subtree:add_le(longCmdId,long_cmd_id_value)
+    subtree:add_le(longCmdLength,long_cmd_length_value)
+
+    if long_cmd_type_value:le_uint() == LongCommandType.Head then
+        if report_mode_value:le_uint() == ReportMode.Reply then parse_reply(payload_buffer, pinfo, subtree)
+        elseif report_mode_value:le_uint() == ReportMode.Request then parse_request(payload_buffer, pinfo, subtree) end
+    else pinfo.cols.info = "Long command data(0x"..long_cmd_id_value..") ->" .. cmn.getBytes(payload_buffer) end
+
+    subtree:add_le(reportMode,report_mode_value)
+end
+
 DissectorTable.get("usb.bulk"):add(0xff, switch2_protocol)
 DissectorTable.get("btatt.handle"):add(0x0012, switch2ble_protocol) -- BLE vibration only
 DissectorTable.get("btatt.handle"):add(0x0014, switch2ble_protocol) -- BLE command only
 DissectorTable.get("btatt.handle"):add(0x0016, switch2ble_protocol) -- BLE vibration + command
+DissectorTable.get("btatt.handle"):add(0x0018, switch2ble_long_protocol) -- BLE long command
 DissectorTable.get("btatt.handle"):add(0x001a, switch2ble_protocol) -- BLE reply
