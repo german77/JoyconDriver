@@ -24,24 +24,30 @@ local LongCommandTypeNames = {
     [LongCommandType.Head] = "Head",
     [LongCommandType.Body] = "Body",
 }
+
 -- PID/VID
-local VidNintendo =         0x057e
-local PidJoyconLeft =       0x2006
-local PidJoyconRight =      0x2007
-local PidExtGripDfu =       0x2008
-local PidProController =    0x2009
-local PidExtGrip =          0x200E
-local PidProControllerDfu = 0x200F
-local PidLucia =            0x2017
-local PidLuciaDfu =         0x2018
-local PidLagon =            0x2019
-local PidLagonDfu =         0x201A
-local PidLager =            0x201E
-local PidLagerDfu =         0x201F
-local PidJoycon2Right =     0x2066
-local PidJoycon2Left =      0x2067
-local PidProController2 =   0x2069
-local PidGCController2 =    0x2073
+local Vid = {
+    Nintendo =         0x057e,
+}
+
+local Pid = {
+    JoyconLeft =       0x2006,
+    JoyconRight =      0x2007,
+    ExtGripDfu =       0x2008,
+    ProController =    0x2009,
+    ExtGrip =          0x200E,
+    ProControllerDfu = 0x200F,
+    Lucia =            0x2017,
+    LuciaDfu =         0x2018,
+    Lagon =            0x2019,
+    LagonDfu =         0x201A,
+    Lager =            0x201E,
+    LagerDfu =         0x201F,
+    Joycon2Right =     0x2066,
+    Joycon2Left =      0x2067,
+    ProController2 =   0x2069,
+    GCController2 =    0x2073,
+}
 
 -- SPI addresss, 2MB
 local Spi = {
@@ -153,7 +159,7 @@ local SpiCalibrationMagic = 0xb2a1 -- If present user calibration data is set
 
 -- Vibration samples
 local VibrationSample = {
-    None =        0x00, -- no sound
+    None =        0x00, -- No sound
     Buzz =        0x01, -- 1s buzz
     Find =        0x02, -- Find controller. 1s high pich buzz followed by a beep beep
     Connect =     0x03, -- Connect controller. Button click sound
@@ -911,16 +917,29 @@ local function parse_firmware_reply(buffer, pinfo, tree, command_value, result_v
     tree:add_le(command, command_value):append_text(command_text)
 end
 
+local function parse_set_address_reply(buffer, pinfo, tree, result_value)
+    local result_text = ResultCodeNames[result_value:le_uint()]
+    local address_value = buffer(3,6)
+
+    tree:add_le(pairingAddress, address_value)
+
+    pinfo.cols.info = "Reply   Pairing set address: " .. result_text .. " address" .. cmn.getBytes(address_value)
+    return " (Firmware data)"
+end
+
 local function parse_pairing_reply(buffer, pinfo, tree, command_value, result_value)
+    local command_text = " (Pairing unknown)"
     local result_text = ResultCodeNames[result_value:le_uint()]
     local buffer_value = buffer(8, buffer:len()-8)
     local buffer_length = buffer_value:len()
     local pairing_buffer = buffer_value:bytes():tvb("Pairing buffer")
 
     tree:add_le(pairingBuffer, buffer_value)
-    tree:add_le(command, command_value):append_text(" (Pairing unknown)")
 
-    pinfo.cols.info = "Reply   Pairing(" .. command_value .. "): ".. result_text .. " size 0x".. cmn.hex(buffer_length) .. " ->" .. cmn.getBytes(buffer_value)
+    if     command_value:le_uint() == PairingSetAddress then command_text = parse_set_address_reply(pairing_buffer, pinfo, tree, result_value)
+    else pinfo.cols.info = "Reply   Pairing(" .. command_value .. "): ".. result_text .. " size 0x".. cmn.hex(buffer_length) .. " ->" .. cmn.getBytes(pairing_buffer) end
+
+    tree:add_le(command, command_value):append_text(command_text)
 end
 
 local function parse_reply(buffer, pinfo, tree)
