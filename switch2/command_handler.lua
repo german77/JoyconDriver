@@ -248,6 +248,9 @@ local InitCommand0a = 0x0a -- Unknown
 local InitCommand0c = 0x0c -- Unknown
 local InitCommand0d = 0x0d -- Unknown. Has console address
 
+-- 06 commands
+local Report06Command03 = 0x03 -- Unknown
+
 -- 07 commands
 local Report07Command01 = 0x01 -- Unknown
 
@@ -274,8 +277,8 @@ local FirmwareCommand02 =  0x02 -- Unknown
 local FirmwareProperties = 0x03 -- Contains info like the full FW size
 local FirmwareData =       0x04 -- Sends the firmware data in 0x4c chunks
 local FirmwareCommand05 =  0x05 -- Unknown
-local FirmwareCommand06 =  0x06 -- Unknown. Finalize?
-local FirmwareCommand07 =  0x07 -- Unknown
+local FirmwareCommand06 =  0x06 -- Unknown
+local FirmwareCommand07 =  0x07 -- Unknown. Finalize?
 
 -- 10 commands
 local Report10Command01 = 0x01 -- Unknown
@@ -1016,7 +1019,12 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
 
     if report_mode_value:le_uint() == 0 then
         parse_vibration(payload_buffer, pinfo, subtree)
-        if payload_buffer(0x12, 1):le_uint() == ReportMode.Request then
+        if payload_buffer(0x0f, 1):le_uint() == ReportMode.Reply then
+            local command_buffer = payload_buffer(0x0e, payload_buffer:len() - 0x0e):bytes():tvb("Command payload")
+            report_mode_value = payload_buffer(0x0f, 1)
+            report_mode_text = " (Pro Vibration + Reply)"
+            parse_reply(command_buffer, pinfo, subtree)
+        elseif payload_buffer(0x12, 1):le_uint() == ReportMode.Request then
             local command_buffer = payload_buffer(0x11, payload_buffer:len() - 0x11):bytes():tvb("Command payload")
             report_mode_value = payload_buffer(0x12, 1)
             report_mode_text = " (GC Vibration + Request)"
@@ -1033,7 +1041,7 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
     elseif report_mode_value:le_uint() == ReportMode.Reply then parse_reply(payload_buffer, pinfo, subtree)
     elseif report_mode_value:le_uint() == ReportMode.Request then parse_request(payload_buffer, pinfo, subtree) end
 
-    subtree:add_le(reportMode,report_mode_value)
+    subtree:add_le(reportMode,report_mode_value):append_text(report_mode_text)
 end
 
 function switch2ble_long_protocol.dissector(buffer, pinfo, tree)
@@ -1069,3 +1077,4 @@ DissectorTable.get("btatt.handle"):add(0x0014, switch2ble_protocol) -- BLE comma
 DissectorTable.get("btatt.handle"):add(0x0016, switch2ble_protocol) -- BLE vibration + command
 DissectorTable.get("btatt.handle"):add(0x0018, switch2ble_long_protocol) -- BLE long command
 DissectorTable.get("btatt.handle"):add(0x001a, switch2ble_protocol) -- BLE reply
+DissectorTable.get("btatt.handle"):add(0x001e, switch2ble_protocol) -- BLE reply
