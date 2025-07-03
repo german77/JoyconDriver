@@ -2,6 +2,7 @@ cmn = require "common"
 
 switch2hid_protocol = Proto("sw2_hid",  "Nintendo Switch 2 HID")
 switch2hidble_protocol = Proto("sw2_hid_ble",  "Nintendo Switch 2 HID BLE")
+switch2hidble_protocol2 = Proto("sw2_hid_ble2",  "Nintendo Switch 2 HID BLE2")
 
 usb_payload = Field.new("usbll.data")
 
@@ -27,6 +28,7 @@ local InputReportNames = {
 local inputType =          ProtoField.uint8("sw2_hid.inputType",          "InputType",          base.HEX, InputReportNames)
 local packetId =           ProtoField.uint8("sw2_hid.packetId",           "PacketId",           base.HEX)
 local status =             ProtoField.uint8("sw2_hid.status",             "Status",             base.HEX)
+local battery =            ProtoField.uint16("sw2_hid.battery",           "Battery",            base.DEC)
 local buttons =            ProtoField.uint8("sw2_hid.buttons",            "Buttons",            base.HEX)
 local leftStick =          ProtoField.uint8("sw2_hid.leftStick",          "LeftStick",          base.HEX)
 local rightStick =         ProtoField.uint8("sw2_hid.rightStick",         "RightStick",         base.HEX)
@@ -36,11 +38,19 @@ local rightAnalogTrigger = ProtoField.uint8("sw2_hid.rightAnalogTrigger", "Right
 local mouseX =             ProtoField.uint8("sw2_hid.mouseX",             "MouseX",             base.HEX)
 local mouseY =             ProtoField.uint8("sw2_hid.mouseY",             "mouseY",             base.HEX)
 local imuLength =          ProtoField.uint8("sw2_hid.imuLength",          "ImuLength",          base.HEX)
-local imuSample =          ProtoField.uint16("sw2_hid.imuSample",         "ImuSample",          base.HEX)
+local imuSample =          ProtoField.uint16("sw2_hid.imuSample",         "ImuSample",          base.DEC)
 local motion =             ProtoField.bytes("sw2_hid.motion",             "Motion",             base.SPACE)
+local temperature =        ProtoField.int16("sw2_hid.temperature",        "Temperature",        base.DEC)
+local motionAccelX =       ProtoField.int16("sw2_hid.motionGyroX",        "MotionGyroX",        base.DEC)
+local motionAccelY =       ProtoField.int16("sw2_hid.motionAccelY",       "motionAccelY",       base.DEC)
+local motionAccelZ =       ProtoField.int16("sw2_hid.motionAccelZ",       "motionAccelZ",       base.DEC)
+local motionGyroX =        ProtoField.int16("sw2_hid.motionGyroX",        "MotionGyroX",        base.DEC)
+local motionGyroY =        ProtoField.int16("sw2_hid.motionGyroY",        "MotionGyroY",        base.DEC)
+local motionGyroZ =        ProtoField.int16("sw2_hid.motionGyroZ",        "MotionGyroZ",        base.DEC)
 
 switch2hid_protocol.fields = {inputType, packetId, status, buttons, leftStick, rightStick, vibrationCode, leftAnalogTrigger, rightAnalogTrigger,
-                              imuLength, imuSample, motion, mouseX, mouseY}
+                              imuLength, imuSample, motion, mouseX, mouseY, temperature, motionAccelX, motionAccelY, motionAccelZ,
+                              motionGyroX, motionGyroY, motionGyroZ, battery}
 
 
 
@@ -71,12 +81,44 @@ local C_BUTTON_BIT =       0x100000
 local SR_BUTTON_BIT =      0x400000
 local SL_BUTTON_BIT =      0x800000
 
+
+-- Buttons Format A
+local Y_BUTTON_BIT_A =        0x00000001
+local X_BUTTON_BIT_A =        0x00000002
+local B_BUTTON_BIT_A =        0x00000004
+local A_BUTTON_BIT_A =        0x00000008
+local SR_RIGHT_BUTTON_BIT_A = 0x00000010
+local SL_RIGHT_BUTTON_BIT_A = 0x00000020
+local R_BUTTON_BIT_A =        0x00000040
+local ZR_BUTTON_BIT_A =       0x00000080
+
+local MINUS_BUTTON_BIT_A =   0x00000100
+local PLUS_BUTTON_BIT_A =    0x00000200
+local STICK_R_BUTTON_BIT_A = 0x00000400
+local STICK_L_BUTTON_BIT_A = 0x00000800
+local HOME_BUTTON_BIT_A =    0x00001000
+local CAPTURE_BUTTON_BIT_A = 0x00002000
+local C_BUTTON_BIT_A =       0x00004000
+
+local DOWN_BUTTON_BIT_A =    0x00010000
+local UP_BUTTON_BIT_A =      0x00020000
+local RIGHT_BUTTON_BIT_A =   0x00040000
+local LEFT_BUTTON_BIT_A =    0x00080000
+local SR_LEFT_BUTTON_BIT_A = 0x00100000
+local SL_LEFT_BUTTON_BIT_A = 0x00200000
+local L_BUTTON_BIT_A =       0x00400000
+local ZL_BUTTON_BIT_A =      0x00800000
+
+local GR_BUTTON_BIT_A = 0x01000000
+local GL_BUTTON_BIT_A = 0x02000000
+local HEADSET_BIT_A =   0x10000000
+
 -- TODO implement this per controller type
 local function parse_buttons(buttons_value)
     -- byte & (1 << n) > 0
     local function is_bit_set(byte, mask)
-    return bit.band(byte, mask) > 0
- end
+        return bit.band(byte, mask) > 0
+    end
 
     local buttons_array = {}
 
@@ -108,7 +150,50 @@ local function parse_buttons(buttons_value)
 
     if #buttons_array ~= 0 then
         buttons_text = " (" .. table.concat(buttons_array, ", ") .. ")"
- end
+    end
+
+    return buttons_text
+end
+
+local function parse_buttons2(buttons_value)
+    local function is_bit_set(byte, mask)
+        return bit.band(byte, mask) > 0
+    end
+
+    local buttons_array = {}
+
+    if is_bit_set(buttons_value, DOWN_BUTTON_BIT_A) then     table.insert(buttons_array, "down") end
+    if is_bit_set(buttons_value, UP_BUTTON_BIT_A) then       table.insert(buttons_array, "up") end
+    if is_bit_set(buttons_value, RIGHT_BUTTON_BIT_A) then    table.insert(buttons_array, "right") end
+    if is_bit_set(buttons_value, LEFT_BUTTON_BIT_A) then     table.insert(buttons_array, "left") end
+    if is_bit_set(buttons_value, SR_LEFT_BUTTON_BIT_A) then  table.insert(buttons_array, "SR") end
+    if is_bit_set(buttons_value, SL_LEFT_BUTTON_BIT_A) then  table.insert(buttons_array, "SL") end
+    if is_bit_set(buttons_value, SR_RIGHT_BUTTON_BIT_A) then table.insert(buttons_array, "SR") end
+    if is_bit_set(buttons_value, SL_RIGHT_BUTTON_BIT_A) then table.insert(buttons_array, "SL") end
+    if is_bit_set(buttons_value, L_BUTTON_BIT_A) then        table.insert(buttons_array, "L") end
+    if is_bit_set(buttons_value, ZL_BUTTON_BIT_A) then       table.insert(buttons_array, "ZL") end
+    if is_bit_set(buttons_value, Y_BUTTON_BIT_A) then        table.insert(buttons_array, "Y") end
+    if is_bit_set(buttons_value, X_BUTTON_BIT_A) then        table.insert(buttons_array, "X") end
+    if is_bit_set(buttons_value, B_BUTTON_BIT_A) then        table.insert(buttons_array, "B") end
+    if is_bit_set(buttons_value, A_BUTTON_BIT_A) then        table.insert(buttons_array, "A") end
+    if is_bit_set(buttons_value, R_BUTTON_BIT_A) then        table.insert(buttons_array, "R") end
+    if is_bit_set(buttons_value, ZR_BUTTON_BIT_A) then       table.insert(buttons_array, "ZR") end
+    if is_bit_set(buttons_value, MINUS_BUTTON_BIT_A) then    table.insert(buttons_array, "minus") end
+    if is_bit_set(buttons_value, PLUS_BUTTON_BIT_A) then     table.insert(buttons_array, "plus") end
+    if is_bit_set(buttons_value, STICK_R_BUTTON_BIT_A) then  table.insert(buttons_array, "stick R") end
+    if is_bit_set(buttons_value, STICK_L_BUTTON_BIT_A) then  table.insert(buttons_array, "stick L") end
+    if is_bit_set(buttons_value, HOME_BUTTON_BIT_A) then     table.insert(buttons_array, "home") end
+    if is_bit_set(buttons_value, CAPTURE_BUTTON_BIT_A) then  table.insert(buttons_array, "capture") end
+    if is_bit_set(buttons_value, C_BUTTON_BIT_A) then        table.insert(buttons_array, "C") end
+    if is_bit_set(buttons_value, GR_BUTTON_BIT_A) then       table.insert(buttons_array, "GR") end
+    if is_bit_set(buttons_value, GL_BUTTON_BIT_A) then       table.insert(buttons_array, "GL") end
+    if is_bit_set(buttons_value, HEADSET_BIT_A) then         table.insert(buttons_array, "Headset") end
+
+    local buttons_text = " (none)"
+
+    if #buttons_array ~= 0 then
+        buttons_text = " (" .. table.concat(buttons_array, ", ") .. ")"
+    end
 
     return buttons_text
 end
@@ -143,12 +228,40 @@ local function parse_imu_sample(sample_value)
     return sample_value:get_index(0) + bit.lshift(bit.band(sample_value:get_index(1), 0xF), 8)
 end
 
+local function parse_temperature(temperature_value)
+    return 25 + (temperature_value / 127.0)
+end
+
 local function parse_motion(buffer, tree)
     local imu_sample_value = buffer(0, 2)
     local imu_sample_text = parse_imu_sample(imu_sample_value:bytes())
     
     tree:add_le(imuSample, imu_sample_value):append_text(" ("..imu_sample_text..")")
-    return ", Motion timestamp " .. imu_sample_text
+    return ", Motion timestamp " .. imu_sample_text .. " buffer" .. cmn.getBytes(buffer)
+end
+
+local function parse_motion2(buffer, tree)
+    local imu_sample_value =  buffer(0x0, 4)
+    local temperature_value = buffer(0x4, 2)
+    local accel_x_value =     buffer(0x6, 2)
+    local accel_y_value =     buffer(0x8, 2)
+    local accel_z_value =     buffer(0xa, 2)
+    local gyro_x_value =      buffer(0xc, 2)
+    local gyro_y_value =      buffer(0xe, 2)
+    local gyro_z_value =      buffer(0x10, 2)
+
+    local temperature_text = string.format("%.2f",parse_temperature(temperature_value:le_int()))
+    local imu_sample_text = string.format("%.3f",imu_sample_value:le_int()/1000000.0)
+
+    tree:add_le(imuSample, imu_sample_value):append_text(" ("..imu_sample_text..")")
+    tree:add_le(temperature, temperature_value):append_text(" ("..temperature_text..")")
+    tree:add_le(motionAccelX, accel_x_value)
+    tree:add_le(motionAccelY, accel_y_value)
+    tree:add_le(motionAccelZ, accel_z_value)
+    tree:add_le(motionGyroX, gyro_x_value)
+    tree:add_le(motionGyroY, gyro_y_value)
+    tree:add_le(motionGyroZ, gyro_z_value)
+    return ", Motion timestamp " .. imu_sample_text.. " temperature ".. temperature_text .. " Accel("..accel_x_value:int()..", "..accel_y_value:int()..", "..accel_z_value:int()..") gyro("..gyro_x_value:int()..", "..gyro_y_value:int()..", "..gyro_z_value:int()..")"
 end
 
 local function parse_left_input_report(buffer, pinfo, tree)
@@ -286,8 +399,8 @@ local function parse_wireless_input_report(buffer, pinfo, tree)
     tree:add_le(rightAnalogTrigger, analog_r_value)
     tree:add_le(imuLength, imu_length_value)
 
-    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
-    info = info .. " LTrigger 0x" .. analog_l_value .. " RTrigger 0x" .. analog_r_value
+    local info = ""--"Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
+    --info = info .. " LTrigger 0x" .. analog_l_value .. " RTrigger 0x" .. analog_r_value
 
     if imu_length_value:le_uint() > 0 then
         tree:add_le(motion, motion_buffer_value)
@@ -328,6 +441,33 @@ local function parse_wireless_input_report2(buffer, pinfo, tree)
         tree:add_le(motion, motion_buffer_value)
         info = info .. parse_motion(motion_buffer, tree)
     end
+
+    pinfo.cols.info = info
+end
+
+local function parse_wireless_input_reportA(buffer, pinfo, tree)
+    local packet_id_value =      buffer(0x0, 4)
+    local buttons_value =        buffer(0x4, 4)
+    local stick_l_value =        buffer(0xa, 3)
+    local stick_r_value =        buffer(0xd, 3)
+    local battery_value =        buffer(0x1f, 2)
+    local motion_buffer_value =  buffer(0x2a, 18)
+    local motion_buffer = motion_buffer_value:bytes():tvb("Motion buffer")
+
+    local buttons_text = parse_buttons2(buttons_value:le_uint())
+    local stick_l_text = parse_left_stick(stick_l_value:bytes())
+    local stick_r_text = parse_right_stick(stick_r_value:bytes())
+
+    tree:add_le(packetId, packet_id_value)
+    tree:add_le(battery, battery_value)
+    tree:add_le(buttons, buttons_value):append_text(buttons_text)
+    tree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
+    tree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
+
+    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text
+
+    tree:add_le(motion, motion_buffer_value)
+    info = info .. parse_motion2(motion_buffer, tree)
 
     pinfo.cols.info = info
 end
@@ -373,9 +513,22 @@ function switch2hidble_protocol.dissector(buffer, pinfo, tree)
 
     -- TODO: Find how to spot which format is using
     --parse_wireless_input_report(payload_buffer, pinfo, subtree)
-    parse_wireless_input_report2(payload_buffer, pinfo, subtree)
+    --parse_wireless_input_report2(payload_buffer, pinfo, subtree)
+end
+
+function switch2hidble_protocol2.dissector(buffer, pinfo, tree)
+    length = buffer:len()
+    if length == 0 then return end
+
+    pinfo.cols.protocol = switch2hid_protocol.name
+    local payload_buffer = buffer:bytes():tvb("Payload")
+
+    local subtree = tree:add(switch2hid_protocol, payload_buffer(), "Switch2 HID BLE Data")
+
+    parse_wireless_input_reportA(payload_buffer, pinfo, subtree)
 end
 
 --register_postdissector(switch2hid_protocol)
 DissectorTable.get("usb.interrupt"):add(0x03, switch2hid_protocol)
+DissectorTable.get("btatt.handle"):add(0x000a, switch2hidble_protocol2) -- BLE Common input report
 DissectorTable.get("btatt.handle"):add(0x000e, switch2hidble_protocol) -- BLE Simple input report
