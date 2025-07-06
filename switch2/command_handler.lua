@@ -15,6 +15,17 @@ local ReportModeNames = {
     [ReportMode.Request] = "Request",
 }
 
+-- Input report mode
+local CommunicationType = {
+    Usb = 0x00,
+    Ble = 0x01,
+}
+
+local CommunicationTypeNames = {
+    [CommunicationType.Usb] =   "USB",
+    [CommunicationType.Ble] = "BLE",
+}
+
 local LongCommandType = {
     Head = 0x01, -- First command
     Body = 0x02, -- Rest of the command data
@@ -180,6 +191,29 @@ local VibrationSampleNames = {
     [VibrationSample.Ding] =        "Ding",
 }
 
+-- Joycon features
+local ImuFeature = {
+    Unknown01 =    0x01,
+    Unknown02 =    0x02,
+    Motion =       0x04,
+    Unknown08 =    0x08,
+    Mouse =        0x10,
+    Current =      0x20,
+    Unknown40 =    0x40,
+    Magnetometer = 0x80,
+}
+
+local ImuFeatureNames = {
+    [ImuFeature.Unknown01] =    "Unknown 0x01",
+    [ImuFeature.Unknown02] =    "Unknown 0x02",
+    [ImuFeature.Motion] =       "Motion",
+    [ImuFeature.Unknown08] =    "Unknown 0x08",
+    [ImuFeature.Mouse] =        "Mouse",
+    [ImuFeature.Current] =      "Current",
+    [ImuFeature.Unknown40] =    "Unknown 0x40",
+    [ImuFeature.Magnetometer] = "Magnetometer",
+}
+
 -- Result codes
 local ResultCode = {
     Ack =    0xf8, -- Reply from controller
@@ -211,14 +245,14 @@ local ReportType = {
 }
 
 local ReportTypeNames = {
-    [ReportType.Mcu] =          "Mcu",
-    [ReportType.Spi] =          "Spi",
+    [ReportType.Mcu] =          "MCU",
+    [ReportType.Spi] =          "SPI",
     [ReportType.Init] =         "Init",
     [ReportType.Report07] =     "Report 0x07",
     [ReportType.Report08] =     "Report 0x08",
     [ReportType.PlayerLights] = "Player Lights",
     [ReportType.Vibration] =    "Vibration",
-    [ReportType.Imu] =          "Imu",
+    [ReportType.Imu] =          "IMU",
     [ReportType.Firmware] =     "Firmware",
     [ReportType.Report10] =     "Report 0x10",
     [ReportType.Report11] =     "Report 0x11",
@@ -266,9 +300,9 @@ local VibrationPlaySample = 0x02 -- Play different vibration samples
 local VibrationCommand08 =  0x08 -- Unknown
 
 -- IMU commands
-local ImuDisable =   0x02 -- Unknown, no motion output after this command
-local ImuCommand03 = 0x03 -- Unknown
-local ImuEnable =    0x04 -- Unknown, motion output after this command
+local ImuInit =      0x02 -- Init feature
+local ImuFinalize =  0x03 -- Finalize feature
+local ImuEnable =    0x04 -- Enable feature
 local ImuCommand06 = 0x06 -- Unknown
 
 -- Firmware commands
@@ -298,16 +332,17 @@ local Report16Command01 = 0x01 -- Unknown
 -- 18 commands
 local Report18Command01 = 0x01 -- Unknown
 
-local reportType =    ProtoField.uint8("switch2.reportType",     "ReportType",        base.HEX, ReportTypeNames)
-local reportMode =    ProtoField.uint8("switch2.reportMode",     "ReportMode",        base.HEX, ReportModeNames)
-local command =       ProtoField.uint8("switch2.command",        "Command",           base.HEX)
-local commandFlags =  ProtoField.uint8("switch2.commandFlags",   "CommandFlags",      base.HEX)
-local commandLength = ProtoField.uint8("switch2.commandLength",  "CommandLength",     base.HEX)
-local commandBuffer = ProtoField.bytes("switch2.commandBuffer",  "CommandBuffer",     base.NONE)
-local longCmdType =   ProtoField.uint8("switch2.longCmdType",    "LongCommandType",   base.HEX, LongCommandTypeNames)
-local longCmdId =     ProtoField.uint8("switch2.longCmdId",      "LongCommandId",     base.HEX)
-local longCmdLength = ProtoField.uint8("switch2.longCmdLength",  "LongCommandLength", base.HEX)
-local result =        ProtoField.uint8("switch2.result",         "Result",            base.HEX, ResultCodeNames)
+local reportType =       ProtoField.uint8("switch2.reportType",       "ReportType",        base.HEX, ReportTypeNames)
+local reportMode =       ProtoField.uint8("switch2.reportMode",       "ReportMode",        base.HEX, ReportModeNames)
+local comunicationType = ProtoField.uint8("switch2.comunicationType", "comunicationType",  base.HEX, CommunicationTypeNames)
+local command =          ProtoField.uint8("switch2.command",          "Command",           base.HEX)
+local commandFlags =     ProtoField.uint8("switch2.commandFlags",     "CommandFlags",      base.HEX)
+local commandLength =    ProtoField.uint8("switch2.commandLength",    "CommandLength",     base.HEX)
+local commandBuffer =    ProtoField.bytes("switch2.commandBuffer",    "CommandBuffer",     base.NONE)
+local longCmdType =      ProtoField.uint8("switch2.longCmdType",      "LongCommandType",   base.HEX, LongCommandTypeNames)
+local longCmdId =        ProtoField.uint8("switch2.longCmdId",        "LongCommandId",     base.HEX)
+local longCmdLength =    ProtoField.uint8("switch2.longCmdLength",    "LongCommandLength", base.HEX)
+local result =           ProtoField.uint8("switch2.result",           "Result",            base.HEX, ResultCodeNames)
 -- vibration
 local vibrationPacketId = ProtoField.uint8("switch2.vibrationPacketId", "VibrationPacketId", base.HEX)
 local vibrationEnabled =  ProtoField.bool("switch2.vibrationEnabled",   "VibrationEnabled")
@@ -346,6 +381,8 @@ local mcuDataOffset = ProtoField.uint16("switch2.mcuDataOffset", "McuDataOffset"
 local mcuDataLength = ProtoField.uint16("switch2.mcuDataLength", "McuDataLength", base.HEX)
 local mcuDataType =   ProtoField.uint8("switch2.mcuDataType",    "McuDataType",   base.HEX)
 local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",     base.NONE)
+-- imu
+local imuFeature = ProtoField.uint8("switch2.imuFeature", "ImuFeature", base.HEX, ImuFeatureNames)
 
 -- Hack to read mcu buffer
 local mcuDataBuffer = {}
@@ -356,7 +393,8 @@ switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, s
                            mcuReadBlock, mcuTagType, mcuUID, mcuUIDLength, mcuUnk, mcuDataOffset, mcuDataLength, mcuDataType,
                            mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock, spiMax,
                            spiCenter, spiMin, vibrationPacketId, vibrationEnabled, pairingEntries ,pairingAddress, commandLength,
-                           commandBuffer, vibrationSample, longCmdType, longCmdId, longCmdLength, commandFlags}
+                           commandBuffer, vibrationSample, longCmdType, longCmdId, longCmdLength, commandFlags, comunicationType,
+                           imuFeature}
 
 local function parse_vibration_sample(sample)
     if sample == VibrationSampleBuzz then return " (Buzz)" end
@@ -367,6 +405,27 @@ local function parse_vibration_sample(sample)
     if sample == VibrationSampleDun then return " (Dun)" end
     if sample == VibrationSampleDing then return " (Ding)" end
     return " (Unknown)"
+end
+
+local function parse_features(feature_value)
+    local features_array = {}
+
+    if cmn.isBitSet(feature_value, ImuFeature.Unknown01) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown01]) end
+    if cmn.isBitSet(feature_value, ImuFeature.Unknown02) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown02]) end
+    if cmn.isBitSet(feature_value, ImuFeature.Motion) then       table.insert(features_array, ImuFeatureNames[ImuFeature.Motion]) end
+    if cmn.isBitSet(feature_value, ImuFeature.Unknown08) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown08]) end
+    if cmn.isBitSet(feature_value, ImuFeature.Mouse) then        table.insert(features_array, ImuFeatureNames[ImuFeature.Mouse]) end
+    if cmn.isBitSet(feature_value, ImuFeature.Current) then      table.insert(features_array, ImuFeatureNames[ImuFeature.Current]) end
+    if cmn.isBitSet(feature_value, ImuFeature.Unknown40) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown40]) end
+    if cmn.isBitSet(feature_value, ImuFeature.Magnetometer) then table.insert(features_array, ImuFeatureNames[ImuFeature.Magnetometer]) end
+
+    local features_text = " (none)"
+
+    if #features_array ~= 0 then
+        features_text = " (" .. table.concat(features_array, ", ") .. ")"
+    end
+
+    return features_text
 end
 
 local function parse_mcu_tag_type(tag_type)
@@ -598,14 +657,18 @@ local function parse_vibration_command(buffer, pinfo, tree, command_value, comma
 end
 
 local function parse_imu_command(buffer, pinfo, tree, command_value, command_length_value)
+    local imu_feature_value = buffer(0, 1)
     local command_text = " (IMU unknown)"
+    local imu_feature_text = parse_features(imu_feature_value:le_uint())
 
-    if command_value:le_uint() == ImuDisable then
-        pinfo.cols.info = "Request IMU: Disable motion"
-        command_text = " (IMU disable motion)"
+    tree:add_le(imuFeature, imu_feature_value):append_text(imu_feature_text)
+
+    if command_value:le_uint() == ImuInit then
+        pinfo.cols.info = "Request IMU Init feature: " .. imu_feature_text
+        command_text = " (IMU Init feature)"
     elseif command_value:le_uint() == ImuEnable then
-        pinfo.cols.info = "Request IMU: Enable motion"
-        command_text = " (IMU enable motion)"
+        pinfo.cols.info = "Request IMU Enable feature: " .. imu_feature_text
+        command_text = " (IMU Enable feature)"
     else
         pinfo.cols.info = "Request IMU(0x"..command_value..") ->".. cmn.getBytes(buffer)
     end
@@ -671,6 +734,7 @@ end
 
 local function parse_request(buffer, pinfo, tree)
     local report_type_value = buffer(0,1)
+    local comunication_type_value = buffer(2,1)
     local command_value = buffer(3,1)
     local command_flags_value = buffer(4,1)
     local command_length_value = buffer(5,1)
@@ -682,6 +746,7 @@ local function parse_request(buffer, pinfo, tree)
     local command_buffer = command_buffer_value:bytes():tvb("Command buffer")
 
     tree:add_le(reportType, report_type_value)
+    tree:add_le(comunicationType, comunication_type_value)
     tree:add_le(commandFlags, command_flags_value)
     tree:add_le(commandLength, command_length_value)
     tree:add_le(commandBuffer, command_buffer_value)
@@ -946,11 +1011,13 @@ local function parse_pairing_reply(buffer, pinfo, tree, command_value, result_va
 end
 
 local function parse_reply(buffer, pinfo, tree)
-    local report_type_value = buffer(0, 1)
-    local command_value =     buffer(3, 1)
-    local result_value =      buffer(5, 1)
+    local report_type_value =       buffer(0, 1)
+    local comunication_type_value = buffer(2,1)
+    local command_value =           buffer(3, 1)
+    local result_value =            buffer(5, 1)
 
     tree:add_le(reportType, report_type_value)
+    tree:add_le(comunicationType, comunication_type_value)
     tree:add_le(result, result_value)
 
     if     report_type_value:le_uint() == ReportType.Mcu then          parse_mcu_reply(buffer, pinfo, tree, command_value, result_value)
@@ -1038,8 +1105,13 @@ function switch2ble_protocol.dissector(buffer, pinfo, tree)
     elseif bit.band(report_mode_value:le_uint(), 0xf0) == 0x50 then
         parse_vibration(payload_buffer, pinfo, subtree)
         report_mode_text = " (Vibration)"
-    elseif report_mode_value:le_uint() == ReportMode.Reply then parse_reply(payload_buffer, pinfo, subtree)
-    elseif report_mode_value:le_uint() == ReportMode.Request then parse_request(payload_buffer, pinfo, subtree) end
+    elseif report_mode_value:le_uint() == ReportMode.Reply then
+        parse_reply(payload_buffer, pinfo, subtree)
+        report_mode_text = ""
+    elseif report_mode_value:le_uint() == ReportMode.Request then
+        parse_request(payload_buffer, pinfo, subtree)
+        report_mode_text = ""
+    end
 
     subtree:add_le(reportMode,report_mode_value):append_text(report_mode_text)
 end

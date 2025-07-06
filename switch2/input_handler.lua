@@ -35,8 +35,10 @@ local rightStick =         ProtoField.uint8("sw2_hid.rightStick",         "Right
 local vibrationCode =      ProtoField.uint8("sw2_hid.vibrationCode",      "VibrationCode",      base.HEX)
 local leftAnalogTrigger =  ProtoField.uint8("sw2_hid.leftAnalogTrigger",  "LeftAnalogTrigger",  base.HEX)
 local rightAnalogTrigger = ProtoField.uint8("sw2_hid.rightAnalogTrigger", "RightAnalogTrigger", base.HEX)
-local mouseX =             ProtoField.uint8("sw2_hid.mouseX",             "MouseX",             base.HEX)
-local mouseY =             ProtoField.uint8("sw2_hid.mouseY",             "mouseY",             base.HEX)
+local mouseX =             ProtoField.uint16("sw2_hid.mouseX",            "MouseX",             base.HEX)
+local mouseY =             ProtoField.uint16("sw2_hid.mouseY",            "mouseY",             base.HEX)
+local mouseUnkA =          ProtoField.uint16("sw2_hid.mouseUnkA",         "mouseUnkA",          base.HEX)
+local mouseUnkB =          ProtoField.uint16("sw2_hid.mouseUnkB",         "mouseUnkB",          base.HEX)
 local imuLength =          ProtoField.uint8("sw2_hid.imuLength",          "ImuLength",          base.HEX)
 local imuSample =          ProtoField.uint16("sw2_hid.imuSample",         "ImuSample",          base.DEC)
 local motion =             ProtoField.bytes("sw2_hid.motion",             "Motion",             base.SPACE)
@@ -50,8 +52,7 @@ local motionGyroZ =        ProtoField.int16("sw2_hid.motionGyroZ",        "Motio
 
 switch2hid_protocol.fields = {inputType, packetId, status, buttons, leftStick, rightStick, vibrationCode, leftAnalogTrigger, rightAnalogTrigger,
                               imuLength, imuSample, motion, mouseX, mouseY, temperature, motionAccelX, motionAccelY, motionAccelZ,
-                              motionGyroX, motionGyroY, motionGyroZ, battery}
-
+                              motionGyroX, motionGyroY, motionGyroZ, battery, mouseUnkA, mouseUnkB}
 
 
 -- Buttons
@@ -115,36 +116,31 @@ local HEADSET_BIT_A =   0x10000000
 
 -- TODO implement this per controller type
 local function parse_buttons(buttons_value)
-    -- byte & (1 << n) > 0
-    local function is_bit_set(byte, mask)
-        return bit.band(byte, mask) > 0
-    end
-
     local buttons_array = {}
 
-    if is_bit_set(buttons_value, DOWN_BUTTON_BIT) then    table.insert(buttons_array, "down") end
-    if is_bit_set(buttons_value, UP_BUTTON_BIT) then      table.insert(buttons_array, "up") end
-    if is_bit_set(buttons_value, RIGHT_BUTTON_BIT) then   table.insert(buttons_array, "right") end
-    if is_bit_set(buttons_value, LEFT_BUTTON_BIT) then    table.insert(buttons_array, "left") end
-    if is_bit_set(buttons_value, SR_BUTTON_BIT) then      table.insert(buttons_array, "SR") end
-    if is_bit_set(buttons_value, SL_BUTTON_BIT) then      table.insert(buttons_array, "SL") end
-    if is_bit_set(buttons_value, L_BUTTON_BIT) then       table.insert(buttons_array, "L") end
-    if is_bit_set(buttons_value, ZL_BUTTON_BIT) then      table.insert(buttons_array, "ZL") end
-    if is_bit_set(buttons_value, Y_BUTTON_BIT) then       table.insert(buttons_array, "Y") end
-    if is_bit_set(buttons_value, X_BUTTON_BIT) then       table.insert(buttons_array, "X") end
-    if is_bit_set(buttons_value, B_BUTTON_BIT) then       table.insert(buttons_array, "B") end
-    if is_bit_set(buttons_value, A_BUTTON_BIT) then       table.insert(buttons_array, "A") end
-    if is_bit_set(buttons_value, R_BUTTON_BIT) then       table.insert(buttons_array, "R") end
-    if is_bit_set(buttons_value, ZR_BUTTON_BIT) then      table.insert(buttons_array, "ZR") end
-    if is_bit_set(buttons_value, MINUS_BUTTON_BIT) then   table.insert(buttons_array, "minus") end
-    if is_bit_set(buttons_value, PLUS_BUTTON_BIT) then    table.insert(buttons_array, "plus") end
-    if is_bit_set(buttons_value, STICK_R_BUTTON_BIT) then table.insert(buttons_array, "stick R") end
-    if is_bit_set(buttons_value, STICK_L_BUTTON_BIT) then table.insert(buttons_array, "stick L") end
-    if is_bit_set(buttons_value, HOME_BUTTON_BIT) then    table.insert(buttons_array, "home") end
-    if is_bit_set(buttons_value, CAPTURE_BUTTON_BIT) then table.insert(buttons_array, "capture") end
-    if is_bit_set(buttons_value, C_BUTTON_BIT) then       table.insert(buttons_array, "C") end
-    if is_bit_set(buttons_value, GR_BUTTON_BIT) then      table.insert(buttons_array, "GR") end
-    if is_bit_set(buttons_value, GL_BUTTON_BIT) then      table.insert(buttons_array, "GL") end
+    if cmn.isBitSet(buttons_value, DOWN_BUTTON_BIT) then    table.insert(buttons_array, "down") end
+    if cmn.isBitSet(buttons_value, UP_BUTTON_BIT) then      table.insert(buttons_array, "up") end
+    if cmn.isBitSet(buttons_value, RIGHT_BUTTON_BIT) then   table.insert(buttons_array, "right") end
+    if cmn.isBitSet(buttons_value, LEFT_BUTTON_BIT) then    table.insert(buttons_array, "left") end
+    if cmn.isBitSet(buttons_value, SR_BUTTON_BIT) then      table.insert(buttons_array, "SR") end
+    if cmn.isBitSet(buttons_value, SL_BUTTON_BIT) then      table.insert(buttons_array, "SL") end
+    if cmn.isBitSet(buttons_value, L_BUTTON_BIT) then       table.insert(buttons_array, "L") end
+    if cmn.isBitSet(buttons_value, ZL_BUTTON_BIT) then      table.insert(buttons_array, "ZL") end
+    if cmn.isBitSet(buttons_value, Y_BUTTON_BIT) then       table.insert(buttons_array, "Y") end
+    if cmn.isBitSet(buttons_value, X_BUTTON_BIT) then       table.insert(buttons_array, "X") end
+    if cmn.isBitSet(buttons_value, B_BUTTON_BIT) then       table.insert(buttons_array, "B") end
+    if cmn.isBitSet(buttons_value, A_BUTTON_BIT) then       table.insert(buttons_array, "A") end
+    if cmn.isBitSet(buttons_value, R_BUTTON_BIT) then       table.insert(buttons_array, "R") end
+    if cmn.isBitSet(buttons_value, ZR_BUTTON_BIT) then      table.insert(buttons_array, "ZR") end
+    if cmn.isBitSet(buttons_value, MINUS_BUTTON_BIT) then   table.insert(buttons_array, "minus") end
+    if cmn.isBitSet(buttons_value, PLUS_BUTTON_BIT) then    table.insert(buttons_array, "plus") end
+    if cmn.isBitSet(buttons_value, STICK_R_BUTTON_BIT) then table.insert(buttons_array, "stick R") end
+    if cmn.isBitSet(buttons_value, STICK_L_BUTTON_BIT) then table.insert(buttons_array, "stick L") end
+    if cmn.isBitSet(buttons_value, HOME_BUTTON_BIT) then    table.insert(buttons_array, "home") end
+    if cmn.isBitSet(buttons_value, CAPTURE_BUTTON_BIT) then table.insert(buttons_array, "capture") end
+    if cmn.isBitSet(buttons_value, C_BUTTON_BIT) then       table.insert(buttons_array, "C") end
+    if cmn.isBitSet(buttons_value, GR_BUTTON_BIT) then      table.insert(buttons_array, "GR") end
+    if cmn.isBitSet(buttons_value, GL_BUTTON_BIT) then      table.insert(buttons_array, "GL") end
 
     local buttons_text = " (none)"
 
@@ -156,38 +152,34 @@ local function parse_buttons(buttons_value)
 end
 
 local function parse_buttons2(buttons_value)
-    local function is_bit_set(byte, mask)
-        return bit.band(byte, mask) > 0
-    end
-
     local buttons_array = {}
 
-    if is_bit_set(buttons_value, DOWN_BUTTON_BIT_A) then     table.insert(buttons_array, "down") end
-    if is_bit_set(buttons_value, UP_BUTTON_BIT_A) then       table.insert(buttons_array, "up") end
-    if is_bit_set(buttons_value, RIGHT_BUTTON_BIT_A) then    table.insert(buttons_array, "right") end
-    if is_bit_set(buttons_value, LEFT_BUTTON_BIT_A) then     table.insert(buttons_array, "left") end
-    if is_bit_set(buttons_value, SR_LEFT_BUTTON_BIT_A) then  table.insert(buttons_array, "SR") end
-    if is_bit_set(buttons_value, SL_LEFT_BUTTON_BIT_A) then  table.insert(buttons_array, "SL") end
-    if is_bit_set(buttons_value, SR_RIGHT_BUTTON_BIT_A) then table.insert(buttons_array, "SR") end
-    if is_bit_set(buttons_value, SL_RIGHT_BUTTON_BIT_A) then table.insert(buttons_array, "SL") end
-    if is_bit_set(buttons_value, L_BUTTON_BIT_A) then        table.insert(buttons_array, "L") end
-    if is_bit_set(buttons_value, ZL_BUTTON_BIT_A) then       table.insert(buttons_array, "ZL") end
-    if is_bit_set(buttons_value, Y_BUTTON_BIT_A) then        table.insert(buttons_array, "Y") end
-    if is_bit_set(buttons_value, X_BUTTON_BIT_A) then        table.insert(buttons_array, "X") end
-    if is_bit_set(buttons_value, B_BUTTON_BIT_A) then        table.insert(buttons_array, "B") end
-    if is_bit_set(buttons_value, A_BUTTON_BIT_A) then        table.insert(buttons_array, "A") end
-    if is_bit_set(buttons_value, R_BUTTON_BIT_A) then        table.insert(buttons_array, "R") end
-    if is_bit_set(buttons_value, ZR_BUTTON_BIT_A) then       table.insert(buttons_array, "ZR") end
-    if is_bit_set(buttons_value, MINUS_BUTTON_BIT_A) then    table.insert(buttons_array, "minus") end
-    if is_bit_set(buttons_value, PLUS_BUTTON_BIT_A) then     table.insert(buttons_array, "plus") end
-    if is_bit_set(buttons_value, STICK_R_BUTTON_BIT_A) then  table.insert(buttons_array, "stick R") end
-    if is_bit_set(buttons_value, STICK_L_BUTTON_BIT_A) then  table.insert(buttons_array, "stick L") end
-    if is_bit_set(buttons_value, HOME_BUTTON_BIT_A) then     table.insert(buttons_array, "home") end
-    if is_bit_set(buttons_value, CAPTURE_BUTTON_BIT_A) then  table.insert(buttons_array, "capture") end
-    if is_bit_set(buttons_value, C_BUTTON_BIT_A) then        table.insert(buttons_array, "C") end
-    if is_bit_set(buttons_value, GR_BUTTON_BIT_A) then       table.insert(buttons_array, "GR") end
-    if is_bit_set(buttons_value, GL_BUTTON_BIT_A) then       table.insert(buttons_array, "GL") end
-    if is_bit_set(buttons_value, HEADSET_BIT_A) then         table.insert(buttons_array, "Headset") end
+    if cmn.isBitSet(buttons_value, DOWN_BUTTON_BIT_A) then     table.insert(buttons_array, "down") end
+    if cmn.isBitSet(buttons_value, UP_BUTTON_BIT_A) then       table.insert(buttons_array, "up") end
+    if cmn.isBitSet(buttons_value, RIGHT_BUTTON_BIT_A) then    table.insert(buttons_array, "right") end
+    if cmn.isBitSet(buttons_value, LEFT_BUTTON_BIT_A) then     table.insert(buttons_array, "left") end
+    if cmn.isBitSet(buttons_value, SR_LEFT_BUTTON_BIT_A) then  table.insert(buttons_array, "SR") end
+    if cmn.isBitSet(buttons_value, SL_LEFT_BUTTON_BIT_A) then  table.insert(buttons_array, "SL") end
+    if cmn.isBitSet(buttons_value, SR_RIGHT_BUTTON_BIT_A) then table.insert(buttons_array, "SR") end
+    if cmn.isBitSet(buttons_value, SL_RIGHT_BUTTON_BIT_A) then table.insert(buttons_array, "SL") end
+    if cmn.isBitSet(buttons_value, L_BUTTON_BIT_A) then        table.insert(buttons_array, "L") end
+    if cmn.isBitSet(buttons_value, ZL_BUTTON_BIT_A) then       table.insert(buttons_array, "ZL") end
+    if cmn.isBitSet(buttons_value, Y_BUTTON_BIT_A) then        table.insert(buttons_array, "Y") end
+    if cmn.isBitSet(buttons_value, X_BUTTON_BIT_A) then        table.insert(buttons_array, "X") end
+    if cmn.isBitSet(buttons_value, B_BUTTON_BIT_A) then        table.insert(buttons_array, "B") end
+    if cmn.isBitSet(buttons_value, A_BUTTON_BIT_A) then        table.insert(buttons_array, "A") end
+    if cmn.isBitSet(buttons_value, R_BUTTON_BIT_A) then        table.insert(buttons_array, "R") end
+    if cmn.isBitSet(buttons_value, ZR_BUTTON_BIT_A) then       table.insert(buttons_array, "ZR") end
+    if cmn.isBitSet(buttons_value, MINUS_BUTTON_BIT_A) then    table.insert(buttons_array, "minus") end
+    if cmn.isBitSet(buttons_value, PLUS_BUTTON_BIT_A) then     table.insert(buttons_array, "plus") end
+    if cmn.isBitSet(buttons_value, STICK_R_BUTTON_BIT_A) then  table.insert(buttons_array, "stick R") end
+    if cmn.isBitSet(buttons_value, STICK_L_BUTTON_BIT_A) then  table.insert(buttons_array, "stick L") end
+    if cmn.isBitSet(buttons_value, HOME_BUTTON_BIT_A) then     table.insert(buttons_array, "home") end
+    if cmn.isBitSet(buttons_value, CAPTURE_BUTTON_BIT_A) then  table.insert(buttons_array, "capture") end
+    if cmn.isBitSet(buttons_value, C_BUTTON_BIT_A) then        table.insert(buttons_array, "C") end
+    if cmn.isBitSet(buttons_value, GR_BUTTON_BIT_A) then       table.insert(buttons_array, "GR") end
+    if cmn.isBitSet(buttons_value, GL_BUTTON_BIT_A) then       table.insert(buttons_array, "GL") end
+    if cmn.isBitSet(buttons_value, HEADSET_BIT_A) then         table.insert(buttons_array, "Headset") end
 
     local buttons_text = " (none)"
 
@@ -250,8 +242,8 @@ local function parse_motion2(buffer, tree)
     local gyro_y_value =      buffer(0xe, 2)
     local gyro_z_value =      buffer(0x10, 2)
 
-    local temperature_text = string.format("%.2f",parse_temperature(temperature_value:le_int()))
-    local imu_sample_text = string.format("%.3f",imu_sample_value:le_int()/1000000.0)
+    local temperature_text = string.format("%.2f°C",parse_temperature(temperature_value:le_int()))
+    local imu_sample_text = string.format("%.3fs",imu_sample_value:le_int()/1000000.0)
 
     tree:add_le(imuSample, imu_sample_value):append_text(" ("..imu_sample_text..")")
     tree:add_le(temperature, temperature_value):append_text(" ("..temperature_text..")")
@@ -450,6 +442,10 @@ local function parse_wireless_input_reportA(buffer, pinfo, tree)
     local buttons_value =        buffer(0x4, 4)
     local stick_l_value =        buffer(0xa, 3)
     local stick_r_value =        buffer(0xd, 3)
+    local mouse_x_value =        buffer(0x10, 2)
+    local mouse_y_value =        buffer(0x12, 2)
+    local mouse_unkA_value =     buffer(0x14, 2)
+    local mouse_unkB_value =     buffer(0x16, 2)
     local battery_value =        buffer(0x1f, 2)
     local motion_buffer_value =  buffer(0x2a, 18)
     local motion_buffer = motion_buffer_value:bytes():tvb("Motion buffer")
@@ -463,6 +459,10 @@ local function parse_wireless_input_reportA(buffer, pinfo, tree)
     tree:add_le(buttons, buttons_value):append_text(buttons_text)
     tree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
     tree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
+    tree:add_le(mouseX, mouse_x_value)
+    tree:add_le(mouseY, mouse_y_value)
+    tree:add_le(mouseUnkA, mouse_unkA_value)
+    tree:add_le(mouseUnkB, mouse_unkB_value)
 
     local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text
 
@@ -513,7 +513,7 @@ function switch2hidble_protocol.dissector(buffer, pinfo, tree)
 
     -- TODO: Find how to spot which format is using
     --parse_wireless_input_report(payload_buffer, pinfo, subtree)
-    --parse_wireless_input_report2(payload_buffer, pinfo, subtree)
+    parse_wireless_input_report2(payload_buffer, pinfo, subtree)
 end
 
 function switch2hidble_protocol2.dissector(buffer, pinfo, tree)

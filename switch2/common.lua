@@ -40,9 +40,14 @@ local function getSubBuffer(buffer, offset, size)
     return buffer(offset,size)
 end
 
+local function isBitSet(byte, mask)
+    return bit.band(byte, mask) > 0
+end
+
 return {
    hex = hex,
    getBytes = getBytes,
    getBytes2 = getBytes2,
    getSubBuffer = getSubBuffer,
+   isBitSet = isBitSet,
 }
