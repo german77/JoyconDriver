@@ -29,6 +29,7 @@ local inputType =          ProtoField.uint8("sw2_hid.inputType",          "Input
 local packetId =           ProtoField.uint8("sw2_hid.packetId",           "PacketId",           base.HEX)
 local status =             ProtoField.uint8("sw2_hid.status",             "Status",             base.HEX)
 local battery =            ProtoField.uint16("sw2_hid.battery",           "Battery",            base.DEC)
+local current =            ProtoField.uint16("sw2_hid.current",           "Current",            base.DEC)
 local buttons =            ProtoField.uint8("sw2_hid.buttons",            "Buttons",            base.HEX)
 local leftStick =          ProtoField.uint8("sw2_hid.leftStick",          "LeftStick",          base.HEX)
 local rightStick =         ProtoField.uint8("sw2_hid.rightStick",         "RightStick",         base.HEX)
@@ -38,7 +39,7 @@ local rightAnalogTrigger = ProtoField.uint8("sw2_hid.rightAnalogTrigger", "Right
 local mouseX =             ProtoField.uint16("sw2_hid.mouseX",            "MouseX",             base.HEX)
 local mouseY =             ProtoField.uint16("sw2_hid.mouseY",            "mouseY",             base.HEX)
 local mouseUnkA =          ProtoField.uint16("sw2_hid.mouseUnkA",         "mouseUnkA",          base.HEX)
-local mouseUnkB =          ProtoField.uint16("sw2_hid.mouseUnkB",         "mouseUnkB",          base.HEX)
+local mouseDistance =      ProtoField.uint16("sw2_hid.mouseDistance",     "mouseDistance",      base.HEX)
 local imuLength =          ProtoField.uint8("sw2_hid.imuLength",          "ImuLength",          base.HEX)
 local imuSample =          ProtoField.uint16("sw2_hid.imuSample",         "ImuSample",          base.DEC)
 local motion =             ProtoField.bytes("sw2_hid.motion",             "Motion",             base.SPACE)
@@ -49,10 +50,14 @@ local motionAccelZ =       ProtoField.int16("sw2_hid.motionAccelZ",       "motio
 local motionGyroX =        ProtoField.int16("sw2_hid.motionGyroX",        "MotionGyroX",        base.DEC)
 local motionGyroY =        ProtoField.int16("sw2_hid.motionGyroY",        "MotionGyroY",        base.DEC)
 local motionGyroZ =        ProtoField.int16("sw2_hid.motionGyroZ",        "MotionGyroZ",        base.DEC)
+local magnetometerX =      ProtoField.int16("sw2_hid.magnetometerX",      "MagnetometerX",      base.DEC)
+local magnetometerY =      ProtoField.int16("sw2_hid.magnetometerY",      "MagnetometerY",      base.DEC)
+local magnetometerZ =      ProtoField.int16("sw2_hid.magnetometerZ",      "MagnetometerZ",      base.DEC)
 
 switch2hid_protocol.fields = {inputType, packetId, status, buttons, leftStick, rightStick, vibrationCode, leftAnalogTrigger, rightAnalogTrigger,
                               imuLength, imuSample, motion, mouseX, mouseY, temperature, motionAccelX, motionAccelY, motionAccelZ,
-                              motionGyroX, motionGyroY, motionGyroZ, battery, mouseUnkA, mouseUnkB}
+                              motionGyroX, motionGyroY, motionGyroZ, battery, mouseUnkA, mouseUnkB, current ,magnetometerX, magnetometerY,
+                              magnetometerZ}
 
 
 -- Buttons
@@ -410,6 +415,7 @@ local function parse_wireless_input_report2(buffer, pinfo, tree)
     local vibration_code_value = buffer(8, 1)
     local mouse_x_value =        buffer(9, 2)
     local mouse_y_value =        buffer(11, 2)
+    local mouse_distance_value = buffer(13, 1)
     local imu_length_value =     buffer(15, 1)
     local motion_buffer_value =  buffer(16, imu_length_value:le_uint())
     local motion_buffer = motion_buffer_value:bytes():tvb("Motion buffer")
@@ -424,6 +430,7 @@ local function parse_wireless_input_report2(buffer, pinfo, tree)
     tree:add_le(vibrationCode, vibration_code_value)
     tree:add_le(mouseX, mouse_x_value)
     tree:add_le(mouseY, mouse_y_value)
+    tree:add_le(mouseDistance, mouse_distance_value)
     tree:add_le(imuLength, imu_length_value)
 
     local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text
@@ -445,29 +452,42 @@ local function parse_wireless_input_reportA(buffer, pinfo, tree)
     local mouse_x_value =        buffer(0x10, 2)
     local mouse_y_value =        buffer(0x12, 2)
     local mouse_unkA_value =     buffer(0x14, 2)
-    local mouse_unkB_value =     buffer(0x16, 2)
+    local mouse_distance_value = buffer(0x16, 2)
+    local magnet_x_value =       buffer(0x19, 2)
+    local magnet_y_value =       buffer(0x1b, 2)
+    local magnet_z_value =       buffer(0x1d, 2)
     local battery_value =        buffer(0x1f, 2)
+    local current_value =        buffer(0x22, 2)
     local motion_buffer_value =  buffer(0x2a, 18)
+    local analog_l_value =       buffer(0x3d, 1)
+    local analog_r_value =       buffer(0x3e, 1)
     local motion_buffer = motion_buffer_value:bytes():tvb("Motion buffer")
 
     local buttons_text = parse_buttons2(buttons_value:le_uint())
     local stick_l_text = parse_left_stick(stick_l_value:bytes())
     local stick_r_text = parse_right_stick(stick_r_value:bytes())
 
+    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text
+
     tree:add_le(packetId, packet_id_value)
-    tree:add_le(battery, battery_value)
     tree:add_le(buttons, buttons_value):append_text(buttons_text)
     tree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
     tree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
     tree:add_le(mouseX, mouse_x_value)
     tree:add_le(mouseY, mouse_y_value)
     tree:add_le(mouseUnkA, mouse_unkA_value)
-    tree:add_le(mouseUnkB, mouse_unkB_value)
-
-    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text
-
+    tree:add_le(mouseDistance, mouse_distance_value)
+    tree:add_le(magnetometerX, magnet_x_value)
+    tree:add_le(magnetometerY, magnet_y_value)
+    tree:add_le(magnetometerZ, magnet_z_value)
+    tree:add_le(battery, battery_value)
+    tree:add_le(current, current_value)
     tree:add_le(motion, motion_buffer_value)
+
     info = info .. parse_motion2(motion_buffer, tree)
+
+    tree:add_le(leftAnalogTrigger, analog_l_value)
+    tree:add_le(rightAnalogTrigger, analog_r_value)
 
     pinfo.cols.info = info
 end

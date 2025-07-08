@@ -15,7 +15,7 @@ local ReportModeNames = {
     [ReportMode.Request] = "Request",
 }
 
--- Input report mode
+-- Communication Type
 local CommunicationType = {
     Usb = 0x00,
     Ble = 0x01,
@@ -382,7 +382,7 @@ local mcuDataLength = ProtoField.uint16("switch2.mcuDataLength", "McuDataLength"
 local mcuDataType =   ProtoField.uint8("switch2.mcuDataType",    "McuDataType",   base.HEX)
 local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",     base.NONE)
 -- imu
-local imuFeature = ProtoField.uint8("switch2.imuFeature", "ImuFeature", base.HEX, ImuFeatureNames)
+local imuFeature = ProtoField.uint8("switch2.imuFeature", "ImuFeature", base.HEX)
 
 -- Hack to read mcu buffer
 local mcuDataBuffer = {}
