@@ -192,7 +192,7 @@ local VibrationSampleNames = {
 }
 
 -- Joycon features
-local ImuFeature = {
+local FeatureType = {
     Unknown01 =    0x01,
     Unknown02 =    0x02,
     Motion =       0x04,
@@ -203,15 +203,15 @@ local ImuFeature = {
     Magnetometer = 0x80,
 }
 
-local ImuFeatureNames = {
-    [ImuFeature.Unknown01] =    "Unknown 0x01",
-    [ImuFeature.Unknown02] =    "Unknown 0x02",
-    [ImuFeature.Motion] =       "Motion",
-    [ImuFeature.Unknown08] =    "Unknown 0x08",
-    [ImuFeature.Mouse] =        "Mouse",
-    [ImuFeature.Current] =      "Current",
-    [ImuFeature.Unknown40] =    "Unknown 0x40",
-    [ImuFeature.Magnetometer] = "Magnetometer",
+local FeatureTypeNames = {
+    [FeatureType.Unknown01] =    "Unknown 0x01",
+    [FeatureType.Unknown02] =    "Unknown 0x02",
+    [FeatureType.Motion] =       "Motion",
+    [FeatureType.Unknown08] =    "Unknown 0x08",
+    [FeatureType.Mouse] =        "Mouse",
+    [FeatureType.Current] =      "Current",
+    [FeatureType.Unknown40] =    "Unknown 0x40",
+    [FeatureType.Magnetometer] = "Magnetometer",
 }
 
 -- Result codes
@@ -235,7 +235,7 @@ local ReportType = {
     Report08 =     0x08, -- Unknown
     PlayerLights = 0x09, -- Controller leds. Write
     Vibration =    0x0a, -- Vibration presets
-    Imu =          0x0c, -- IMU commands. Enable/Disable
+    Feature =      0x0c, -- Feature commands. Enable motion, mouse, magnetometer and others.
     Firmware =     0x0d, -- Firmware update commands
     Report10 =     0x10, -- Unknown
     Report11 =     0x11, -- Unknown
@@ -252,7 +252,7 @@ local ReportTypeNames = {
     [ReportType.Report08] =     "Report 0x08",
     [ReportType.PlayerLights] = "Player Lights",
     [ReportType.Vibration] =    "Vibration",
-    [ReportType.Imu] =          "IMU",
+    [ReportType.Feature] =      "Feature",
     [ReportType.Firmware] =     "Firmware",
     [ReportType.Report10] =     "Report 0x10",
     [ReportType.Report11] =     "Report 0x11",
@@ -299,11 +299,11 @@ local PlayerLightsSetLedPattern = 0x07 -- Set Led pattern
 local VibrationPlaySample = 0x02 -- Play different vibration samples
 local VibrationCommand08 =  0x08 -- Unknown
 
--- IMU commands
-local ImuInit =      0x02 -- Init feature
-local ImuFinalize =  0x03 -- Finalize feature
-local ImuEnable =    0x04 -- Enable feature
-local ImuCommand06 = 0x06 -- Unknown
+-- Feature commands
+local FeatureInit =      0x02 -- Init feature
+local FeatureFinalize =  0x03 -- Finalize feature
+local FeatureEnable =    0x04 -- Enable feature
+local FeatureCommand06 = 0x06 -- Unknown
 
 -- Firmware commands
 local FirmwareCommand01 =  0x01 -- Unknown. Init?
@@ -381,8 +381,8 @@ local mcuDataOffset = ProtoField.uint16("switch2.mcuDataOffset", "McuDataOffset"
 local mcuDataLength = ProtoField.uint16("switch2.mcuDataLength", "McuDataLength", base.HEX)
 local mcuDataType =   ProtoField.uint8("switch2.mcuDataType",    "McuDataType",   base.HEX)
 local mcuBuffer =     ProtoField.bytes("switch2.mcuBuffer",      "McuBuffer",     base.NONE)
--- imu
-local imuFeature = ProtoField.uint8("switch2.imuFeature", "ImuFeature", base.HEX)
+-- feature
+local FeatureType = ProtoField.uint8("switch2.FeatureType", "FeatureType", base.HEX)
 
 -- Hack to read mcu buffer
 local mcuDataBuffer = {}
@@ -394,7 +394,7 @@ switch2_protocol.fields = {reportType, reportMode, command, result, spiLength, s
                            mcuBuffer, mcuBlock0Data, mcuBlock1Data, mcuBlock2Data, mcuBlock3Data, mcuWriteBlock, spiMax,
                            spiCenter, spiMin, vibrationPacketId, vibrationEnabled, pairingEntries ,pairingAddress, commandLength,
                            commandBuffer, vibrationSample, longCmdType, longCmdId, longCmdLength, commandFlags, comunicationType,
-                           imuFeature}
+                           FeatureType}
 
 local function parse_vibration_sample(sample)
     if sample == VibrationSampleBuzz then return " (Buzz)" end
@@ -410,14 +410,14 @@ end
 local function parse_features(feature_value)
     local features_array = {}
 
-    if cmn.isBitSet(feature_value, ImuFeature.Unknown01) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown01]) end
-    if cmn.isBitSet(feature_value, ImuFeature.Unknown02) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown02]) end
-    if cmn.isBitSet(feature_value, ImuFeature.Motion) then       table.insert(features_array, ImuFeatureNames[ImuFeature.Motion]) end
-    if cmn.isBitSet(feature_value, ImuFeature.Unknown08) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown08]) end
-    if cmn.isBitSet(feature_value, ImuFeature.Mouse) then        table.insert(features_array, ImuFeatureNames[ImuFeature.Mouse]) end
-    if cmn.isBitSet(feature_value, ImuFeature.Current) then      table.insert(features_array, ImuFeatureNames[ImuFeature.Current]) end
-    if cmn.isBitSet(feature_value, ImuFeature.Unknown40) then    table.insert(features_array, ImuFeatureNames[ImuFeature.Unknown40]) end
-    if cmn.isBitSet(feature_value, ImuFeature.Magnetometer) then table.insert(features_array, ImuFeatureNames[ImuFeature.Magnetometer]) end
+    if cmn.isBitSet(feature_value, FeatureType.Unknown01) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown01]) end
+    if cmn.isBitSet(feature_value, FeatureType.Unknown02) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown02]) end
+    if cmn.isBitSet(feature_value, FeatureType.Motion) then       table.insert(features_array, FeatureTypeNames[FeatureType.Motion]) end
+    if cmn.isBitSet(feature_value, FeatureType.Unknown08) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown08]) end
+    if cmn.isBitSet(feature_value, FeatureType.Mouse) then        table.insert(features_array, FeatureTypeNames[FeatureType.Mouse]) end
+    if cmn.isBitSet(feature_value, FeatureType.Current) then      table.insert(features_array, FeatureTypeNames[FeatureType.Current]) end
+    if cmn.isBitSet(feature_value, FeatureType.Unknown40) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown40]) end
+    if cmn.isBitSet(feature_value, FeatureType.Magnetometer) then table.insert(features_array, FeatureTypeNames[FeatureType.Magnetometer]) end
 
     local features_text = " (none)"
 
@@ -656,21 +656,21 @@ local function parse_vibration_command(buffer, pinfo, tree, command_value, comma
     tree:add_le(command, command_value):append_text(command_text)
 end
 
-local function parse_imu_command(buffer, pinfo, tree, command_value, command_length_value)
-    local imu_feature_value = buffer(0, 1)
-    local command_text = " (IMU unknown)"
-    local imu_feature_text = parse_features(imu_feature_value:le_uint())
+local function parse_feature_command(buffer, pinfo, tree, command_value, command_length_value)
+    local feature_value = buffer(0, 1)
+    local command_text = " (Feature unknown)"
+    local feature_text = parse_features(feature_value:le_uint())
 
-    tree:add_le(imuFeature, imu_feature_value):append_text(imu_feature_text)
+    tree:add_le(FeatureType, feature_value):append_text(feature_text)
 
-    if command_value:le_uint() == ImuInit then
-        pinfo.cols.info = "Request IMU Init feature: " .. imu_feature_text
-        command_text = " (IMU Init feature)"
-    elseif command_value:le_uint() == ImuEnable then
-        pinfo.cols.info = "Request IMU Enable feature: " .. imu_feature_text
-        command_text = " (IMU Enable feature)"
+    if command_value:le_uint() == FeatureInit then
+        pinfo.cols.info = "Request Feature Init: " .. feature_text
+        command_text = " (Feature Init)"
+    elseif command_value:le_uint() == FeatureEnable then
+        pinfo.cols.info = "Request Feature Enable: " .. feature_text
+        command_text = " (Feature Enable)"
     else
-        pinfo.cols.info = "Request IMU(0x"..command_value..") ->".. cmn.getBytes(buffer)
+        pinfo.cols.info = "Request Feature(0x"..command_value..") ->".. cmn.getBytes(buffer)
     end
 
     tree:add_le(command, command_value):append_text(command_text)
@@ -756,7 +756,7 @@ local function parse_request(buffer, pinfo, tree)
     elseif report_type_value:le_uint() == ReportType.Init then         parse_init_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.PlayerLights then parse_player_lights_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.Vibration then    parse_vibration_command(command_buffer, pinfo, tree, command_value, command_length_value)
-    elseif report_type_value:le_uint() == ReportType.Imu then          parse_imu_command(command_buffer, pinfo, tree, command_value, command_length_value)
+    elseif report_type_value:le_uint() == ReportType.Feature then      parse_feature_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.Firmware then     parse_firmware_command(command_buffer, pinfo, tree, command_value, command_length_value)
     elseif report_type_value:le_uint() == ReportType.Pairing then      parse_paring_command(command_buffer, pinfo, tree, command_value, command_length_value)
     else
@@ -948,14 +948,14 @@ local function parse_vibration_reply(buffer, pinfo, tree, command_value, result_
     tree:add_le(command, command_value):append_text(command_text)
 end
 
-local function parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
-    local command_text = " (IMU unknown)"
+local function parse_feature_reply(buffer, pinfo, tree, command_value, result_value)
+    local command_text = " (Feature unknown)"
     local result_text = ResultCodeNames[result_value:le_uint()]
 
-    pinfo.cols.info = "Reply   IMU(0x"..command_value.."): " .. result_text .. " ->" .. cmn.getBytes(buffer(8, buffer:len()-8))
+    pinfo.cols.info = "Reply   Feature(0x"..command_value.."): " .. result_text .. " ->" .. cmn.getBytes(buffer(8, buffer:len()-8))
 
-    if     command_value:le_uint() == ImuDisable then command_text = " (IMU disable motion)"
-    elseif command_value:le_uint() == ImuEnable then  command_text = " (IMU enable motion)" end
+    if     command_value:le_uint() == FeatureInit then command_text = " (Feature init)"
+    elseif command_value:le_uint() == FeatureEnable then  command_text = " (Feature enable)" end
 
     tree:add_le(command, command_value):append_text(command_text)
 end
@@ -1025,7 +1025,7 @@ local function parse_reply(buffer, pinfo, tree)
     elseif report_type_value:le_uint() == ReportType.Init then         parse_init_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.PlayerLights then parse_player_lights_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.Vibration then    parse_vibration_reply(buffer, pinfo, tree, command_value, result_value)
-    elseif report_type_value:le_uint() == ReportType.Imu then          parse_imu_reply(buffer, pinfo, tree, command_value, result_value)
+    elseif report_type_value:le_uint() == ReportType.Feature then      parse_feature_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.Firmware then     parse_firmware_reply(buffer, pinfo, tree, command_value, result_value)
     elseif report_type_value:le_uint() == ReportType.Pairing then      parse_pairing_reply(buffer, pinfo, tree, command_value, result_value)
     else
