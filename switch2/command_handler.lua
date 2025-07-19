@@ -80,7 +80,7 @@ local Spi = {
     CalibrationA =         0x013080, -- 0x40 bytes
     FactoryCalJoystickA =  0x0130A8, -- 0xb bytes, Left/Right joycon, Left pro/gc controller. center, max, min
     CalibrationB =         0x0130C0, -- 0x40 bytes
-    FactoryCalJoystickB =  0x0130E8, -- 0xb bytes, Right pro/gc controller. center,  max, min
+    FactoryCalJoystickB =  0x0130E8, -- 0xb bytes, Right pro/gc controller. center, max, min
     Unknown13100 =         0x013100, -- 0x18 bytes, Factory motion calibration?
     Unknown13140 =         0x013140, -- 0x9 bytes, Unknown in joycons. Empty on pro
     FactoryCalTrigger =    0x013140, -- 0x2 bytes, Gc only. Max left, max Right.
@@ -193,7 +193,7 @@ local VibrationSampleNames = {
 }
 
 -- Joycon features
-local FeatureType = {
+local FeatureTypes = {
     Unknown01 =    0x01,
     Unknown02 =    0x02,
     Motion =       0x04,
@@ -205,14 +205,14 @@ local FeatureType = {
 }
 
 local FeatureTypeNames = {
-    [FeatureType.Unknown01] =    "Unknown 0x01",
-    [FeatureType.Unknown02] =    "Unknown 0x02",
-    [FeatureType.Motion] =       "Motion",
-    [FeatureType.Unknown08] =    "Unknown 0x08",
-    [FeatureType.Mouse] =        "Mouse",
-    [FeatureType.Current] =      "Current",
-    [FeatureType.Unknown40] =    "Unknown 0x40",
-    [FeatureType.Magnetometer] = "Magnetometer",
+    [FeatureTypes.Unknown01] =    "Unknown 0x01",
+    [FeatureTypes.Unknown02] =    "Unknown 0x02",
+    [FeatureTypes.Motion] =       "Motion",
+    [FeatureTypes.Unknown08] =    "Unknown 0x08",
+    [FeatureTypes.Mouse] =        "Mouse",
+    [FeatureTypes.Current] =      "Current",
+    [FeatureTypes.Unknown40] =    "Unknown 0x40",
+    [FeatureTypes.Magnetometer] = "Magnetometer",
 }
 
 -- Result codes
@@ -411,14 +411,14 @@ end
 local function parse_features(feature_value)
     local features_array = {}
 
-    if cmn.isBitSet(feature_value, FeatureType.Unknown01) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown01]) end
-    if cmn.isBitSet(feature_value, FeatureType.Unknown02) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown02]) end
-    if cmn.isBitSet(feature_value, FeatureType.Motion) then       table.insert(features_array, FeatureTypeNames[FeatureType.Motion]) end
-    if cmn.isBitSet(feature_value, FeatureType.Unknown08) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown08]) end
-    if cmn.isBitSet(feature_value, FeatureType.Mouse) then        table.insert(features_array, FeatureTypeNames[FeatureType.Mouse]) end
-    if cmn.isBitSet(feature_value, FeatureType.Current) then      table.insert(features_array, FeatureTypeNames[FeatureType.Current]) end
-    if cmn.isBitSet(feature_value, FeatureType.Unknown40) then    table.insert(features_array, FeatureTypeNames[FeatureType.Unknown40]) end
-    if cmn.isBitSet(feature_value, FeatureType.Magnetometer) then table.insert(features_array, FeatureTypeNames[FeatureType.Magnetometer]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Unknown01) then    table.insert(features_array, FeatureTypeNames[FeatureTypes.Unknown01]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Unknown02) then    table.insert(features_array, FeatureTypeNames[FeatureTypes.Unknown02]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Motion) then       table.insert(features_array, FeatureTypeNames[FeatureTypes.Motion]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Unknown08) then    table.insert(features_array, FeatureTypeNames[FeatureTypes.Unknown08]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Mouse) then        table.insert(features_array, FeatureTypeNames[FeatureTypes.Mouse]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Current) then      table.insert(features_array, FeatureTypeNames[FeatureTypes.Current]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Unknown40) then    table.insert(features_array, FeatureTypeNames[FeatureTypes.Unknown40]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Magnetometer) then table.insert(features_array, FeatureTypeNames[FeatureTypes.Magnetometer]) end
 
     local features_text = " (none)"
 

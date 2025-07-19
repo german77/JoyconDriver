@@ -28,6 +28,7 @@ local InputReportNames = {
 local inputType =          ProtoField.uint8("sw2_hid.inputType",          "InputType",          base.HEX, InputReportNames)
 local packetId =           ProtoField.uint8("sw2_hid.packetId",           "PacketId",           base.HEX)
 local status =             ProtoField.uint8("sw2_hid.status",             "Status",             base.HEX)
+local audioStatus =        ProtoField.uint8("sw2_hid.audioStatus",        "AudioStatus",        base.HEX)
 local battery =            ProtoField.uint16("sw2_hid.battery",           "Battery",            base.DEC)
 local current =            ProtoField.uint16("sw2_hid.current",           "Current",            base.DEC)
 local buttons =            ProtoField.uint8("sw2_hid.buttons",            "Buttons",            base.HEX)
@@ -331,7 +332,7 @@ local function parse_right_input_report(buffer, pinfo, tree)
     pinfo.cols.info = info
 end
 
-local function parse_input_report(buffer, pinfo, tree)
+local function parse_gc_input_report(buffer, pinfo, tree)
     local packet_id_value =      buffer(1, 1)
     local status_value =         buffer(2, 1)
     local buttons_value =        buffer(3, 3)
@@ -343,7 +344,7 @@ local function parse_input_report(buffer, pinfo, tree)
     local imu_length_value =     buffer(15, 1)
     local motion_buffer_value =  buffer(16, imu_length_value:le_uint())
     local motion_buffer = motion_buffer_value:bytes():tvb("Motion buffer")
-    
+
     local buttons_text = parse_buttons(buttons_value:le_uint())
     local stick_l_text = parse_left_stick(stick_l_value:bytes())
     local stick_r_text = parse_right_stick(stick_r_value:bytes())
@@ -360,6 +361,42 @@ local function parse_input_report(buffer, pinfo, tree)
 
     local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
     info = info .. " LTrigger 0x" .. analog_l_value .. " RTrigger 0x" .. analog_r_value
+
+    if imu_length_value:le_uint() > 0 then
+        tree:add_le(motion, motion_buffer_value)
+        info = info .. parse_motion(motion_buffer, tree)
+    end
+
+    pinfo.cols.info = info
+end
+
+local function parse_pro_input_report(buffer, pinfo, tree)
+    local packet_id_value =      buffer(1, 1)
+    local status_value =         buffer(2, 1)
+    local buttons_value =        buffer(3, 3)
+    local stick_l_value =        buffer(6, 3)
+    local stick_r_value =        buffer(9, 3)
+    local vibration_code_value = buffer(12, 1)
+    local audio_value =          buffer(14, 1)
+    local imu_length_value =     buffer(15, 1)
+    local motion_buffer_value =  buffer(16, imu_length_value:le_uint())
+    local motion_buffer = motion_buffer_value:bytes():tvb("Motion buffer")
+
+    local buttons_text = parse_buttons(buttons_value:le_uint())
+    local stick_l_text = parse_left_stick(stick_l_value:bytes())
+    local stick_r_text = parse_right_stick(stick_r_value:bytes())
+
+    tree:add_le(packetId, packet_id_value)
+    tree:add_le(status, status_value)
+    tree:add_le(buttons, buttons_value):append_text(buttons_text)
+    tree:add_le(leftStick, stick_l_value):append_text(stick_l_text)
+    tree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
+    tree:add_le(vibrationCode, vibration_code_value)
+    tree:add_le(audioStatus, audio_value)
+    tree:add_le(rightAnalogTrigger, analog_r_value)
+    tree:add_le(imuLength, imu_length_value)
+
+    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
 
     if imu_length_value:le_uint() > 0 then
         tree:add_le(motion, motion_buffer_value)
@@ -396,8 +433,8 @@ local function parse_wireless_input_report(buffer, pinfo, tree)
     tree:add_le(rightAnalogTrigger, analog_r_value)
     tree:add_le(imuLength, imu_length_value)
 
-    local info = ""--"Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
-    --info = info .. " LTrigger 0x" .. analog_l_value .. " RTrigger 0x" .. analog_r_value
+    local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
+    info = info .. " LTrigger 0x" .. analog_l_value .. " RTrigger 0x" .. analog_r_value
 
     if imu_length_value:le_uint() > 0 then
         tree:add_le(motion, motion_buffer_value)
@@ -506,8 +543,8 @@ function switch2hid_protocol_dissector(buffer, pinfo, tree)
     if     input_type_value:le_uint() == InputReport.Null then  pinfo.cols.info = "Empty input report"
     elseif input_type_value:le_uint() == InputReport.Left then  parse_left_input_report(buffer, pinfo, subtree)
     elseif input_type_value:le_uint() == InputReport.Right then parse_right_input_report(buffer, pinfo, subtree)
-    elseif input_type_value:le_uint() == InputReport.Pro then   parse_input_report(buffer, pinfo, subtree)
-    elseif input_type_value:le_uint() == InputReport.Gc then    parse_input_report(buffer, pinfo, subtree)
+    elseif input_type_value:le_uint() == InputReport.Pro then   parse_pro_input_report(buffer, pinfo, subtree)
+    elseif input_type_value:le_uint() == InputReport.Gc then    parse_gc_input_report(buffer, pinfo, subtree)
     else pinfo.cols.info = "Unknown input report type " .. input_type_value end
 end
 
@@ -532,8 +569,8 @@ function switch2hidble_protocol.dissector(buffer, pinfo, tree)
     local subtree = tree:add(switch2hid_protocol, payload_buffer(), "Switch2 HID BLE Data")
 
     -- TODO: Find how to spot which format is using
-    --parse_wireless_input_report(payload_buffer, pinfo, subtree)
-    parse_wireless_input_report2(payload_buffer, pinfo, subtree)
+    parse_wireless_input_report(payload_buffer, pinfo, subtree)
+    --parse_wireless_input_report2(payload_buffer, pinfo, subtree)
 end
 
 function switch2hidble_protocol2.dissector(buffer, pinfo, tree)
