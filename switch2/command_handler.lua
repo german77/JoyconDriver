@@ -194,8 +194,8 @@ local VibrationSampleNames = {
 
 -- Joycon features
 local FeatureTypes = {
-    Unknown01 =    0x01,
-    Unknown02 =    0x02,
+    Button =    0x01,
+    Stick =    0x02,
     Motion =       0x04,
     Unknown08 =    0x08,
     Mouse =        0x10,
@@ -205,8 +205,8 @@ local FeatureTypes = {
 }
 
 local FeatureTypeNames = {
-    [FeatureTypes.Unknown01] =    "Unknown 0x01",
-    [FeatureTypes.Unknown02] =    "Unknown 0x02",
+    [FeatureTypes.Button] =       "Button",
+    [FeatureTypes.Stick] =        "Stick",
     [FeatureTypes.Motion] =       "Motion",
     [FeatureTypes.Unknown08] =    "Unknown 0x08",
     [FeatureTypes.Mouse] =        "Mouse",
@@ -304,6 +304,7 @@ local VibrationCommand08 =  0x08 -- Unknown
 local FeatureInit =      0x02 -- Init feature
 local FeatureFinalize =  0x03 -- Finalize feature
 local FeatureEnable =    0x04 -- Enable feature
+local FeatureDisable =   0x05 -- Disable feature
 local FeatureCommand06 = 0x06 -- Unknown
 
 -- Firmware commands
@@ -411,8 +412,8 @@ end
 local function parse_features(feature_value)
     local features_array = {}
 
-    if cmn.isBitSet(feature_value, FeatureTypes.Unknown01) then    table.insert(features_array, FeatureTypeNames[FeatureTypes.Unknown01]) end
-    if cmn.isBitSet(feature_value, FeatureTypes.Unknown02) then    table.insert(features_array, FeatureTypeNames[FeatureTypes.Unknown02]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Button) then       table.insert(features_array, FeatureTypeNames[FeatureTypes.Button]) end
+    if cmn.isBitSet(feature_value, FeatureTypes.Stick) then        table.insert(features_array, FeatureTypeNames[FeatureTypes.Stick]) end
     if cmn.isBitSet(feature_value, FeatureTypes.Motion) then       table.insert(features_array, FeatureTypeNames[FeatureTypes.Motion]) end
     if cmn.isBitSet(feature_value, FeatureTypes.Unknown08) then    table.insert(features_array, FeatureTypeNames[FeatureTypes.Unknown08]) end
     if cmn.isBitSet(feature_value, FeatureTypes.Mouse) then        table.insert(features_array, FeatureTypeNames[FeatureTypes.Mouse]) end
@@ -667,9 +668,15 @@ local function parse_feature_command(buffer, pinfo, tree, command_value, command
     if command_value:le_uint() == FeatureInit then
         pinfo.cols.info = "Request Feature Init: " .. feature_text
         command_text = " (Feature Init)"
+    elseif command_value:le_uint() == FeatureFinalize then
+        pinfo.cols.info = "Request Feature Finalize: " .. feature_text
+        command_text = " (Feature Finalize)"
     elseif command_value:le_uint() == FeatureEnable then
         pinfo.cols.info = "Request Feature Enable: " .. feature_text
         command_text = " (Feature Enable)"
+    elseif command_value:le_uint() == FeatureDisable then
+        pinfo.cols.info = "Request Feature Disable: " .. feature_text
+        command_text = " (Feature Disable)"
     else
         pinfo.cols.info = "Request Feature(0x"..command_value..") ->".. cmn.getBytes(buffer)
     end
@@ -955,8 +962,10 @@ local function parse_feature_reply(buffer, pinfo, tree, command_value, result_va
 
     pinfo.cols.info = "Reply   Feature(0x"..command_value.."): " .. result_text .. " ->" .. cmn.getBytes(buffer(8, buffer:len()-8))
 
-    if     command_value:le_uint() == FeatureInit then command_text = " (Feature init)"
-    elseif command_value:le_uint() == FeatureEnable then  command_text = " (Feature enable)" end
+    if     command_value:le_uint() == FeatureInit then command_text = " (Feature Initialize)"
+    elseif command_value:le_uint() == FeatureFinalize then command_text = " (Feature Finalize)"
+    elseif command_value:le_uint() == FeatureEnable then command_text = " (Feature Enable)"
+    elseif command_value:le_uint() == FeatureDisable then  command_text = " (Feature Disable)" end
 
     tree:add_le(command, command_value):append_text(command_text)
 end

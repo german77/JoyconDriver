@@ -55,9 +55,9 @@ local magnetometerX =      ProtoField.int16("sw2_hid.magnetometerX",      "Magne
 local magnetometerY =      ProtoField.int16("sw2_hid.magnetometerY",      "MagnetometerY",      base.DEC)
 local magnetometerZ =      ProtoField.int16("sw2_hid.magnetometerZ",      "MagnetometerZ",      base.DEC)
 
-switch2hid_protocol.fields = {inputType, packetId, status, buttons, leftStick, rightStick, vibrationCode, leftAnalogTrigger, rightAnalogTrigger,
-                              imuLength, imuSample, motion, mouseX, mouseY, temperature, motionAccelX, motionAccelY, motionAccelZ,
-                              motionGyroX, motionGyroY, motionGyroZ, battery, mouseUnkA, mouseUnkB, current ,magnetometerX, magnetometerY,
+switch2hid_protocol.fields = {inputType, packetId, status, audioStatus, buttons, leftStick, rightStick, vibrationCode, leftAnalogTrigger,
+                              rightAnalogTrigger, imuLength, imuSample, motion, mouseX, mouseY, temperature, motionAccelX, motionAccelY, motionAccelZ,
+                              motionGyroX, motionGyroY, motionGyroZ, battery, mouseUnkA, mouseDistance, current ,magnetometerX, magnetometerY,
                               magnetometerZ}
 
 
@@ -393,7 +393,6 @@ local function parse_pro_input_report(buffer, pinfo, tree)
     tree:add_le(rightStick, stick_r_value):append_text(stick_r_text)
     tree:add_le(vibrationCode, vibration_code_value)
     tree:add_le(audioStatus, audio_value)
-    tree:add_le(rightAnalogTrigger, analog_r_value)
     tree:add_le(imuLength, imu_length_value)
 
     local info = "Input report: Buttons" .. buttons_text .. " LStick" .. stick_l_text .. " RStick" .. stick_r_text
